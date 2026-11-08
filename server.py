@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
+from vvz_dump import LocalCatalog, VvzDump, MAX_ZIP_BYTES
 
 BASE = Path(__file__).resolve().parent
 WEB = BASE / "web"
@@ -275,57 +276,97 @@ class Store:
             return str(target)
 
 
-class VvzCache:
-    """Global 60-second upstream rate limit, cached by URL, shared across tabs."""
+class UpstreamRateLimit:
+    """One shared reservation every 30 seconds: at most two VVZAPI requests/minute.
 
-    def __init__(self, folder):
+    Metadata checks, whole database ZIPs and live fallback calls share this gate.
+    """
+    def __init__(self, interval=30.0):
         self.lock = threading.RLock()
+        self.interval = interval
         self.last_request = 0.0
+
+    def acquire(self, wait=False):
+        while True:
+            with self.lock:
+                delay = self.interval - (time.monotonic() - self.last_request)
+                if delay <= 0:
+                    self.last_request = time.monotonic()
+                    return
+            if not wait:
+                raise RuntimeError(f"VVZ rate limit: retry in {int(delay) + 1}s")
+            time.sleep(min(delay, 2))
+
+
+class VvzCache:
+    """Fallback API requests, plus shared upstream gate for the persistent dump."""
+
+    def __init__(self, folder, rate=None):
+        self.lock = threading.RLock()
         self.cache = {}
         self.pending = []
         self.processing = None
         self.failures = {}
         self.worker_running = False
         self.folder = Path(folder)
+        self.rate = rate or UpstreamRateLimit()
 
-    def get(self, url):
+    def get(self, url, wait=False, force=False):
         with self.lock:
             now = time.monotonic()
             entry = self.cache.get(url)
-            if entry and now - entry[0] < 1800:
+            if entry and now - entry[0] < 1800 and not force:
                 return entry[1], "cached"
-            if now - self.last_request < 60:
-                if entry:
-                    return entry[1], "stale"
-                raise RuntimeError(f"VVZ rate limit: retry in {int(60 - (now - self.last_request)) + 1}s")
-            self.last_request = now  # reserve before request, including failed requests
-            request = Request(url, headers={"User-Agent": "MasterPlan-study-planner/0.1 (+https://github.com/Saxermi/masterplan)", "Accept": "application/json"})
-            try:
-                with urlopen(request, timeout=12) as response:
-                    if int(response.headers.get("Content-Length", "0")) > 4_000_000:
-                        raise ValueError("Upstream response too large")
-                    raw = response.read(4_000_001)
-                    if len(raw) > 4_000_000:
-                        raise ValueError("Upstream response too large")
-                    result = json.loads(raw)
-                    if not isinstance(result, (dict, list)):
-                        raise ValueError("Unexpected upstream response")
-                    self.cache[url] = (now, result)
+        try:
+            self.rate.acquire(wait=wait)
+        except RuntimeError:
+            if entry and not force:
+                return entry[1], "stale"
+            raise
+        request = Request(url, headers={"User-Agent": "MasterPlan-study-planner/0.2 (+https://github.com/Saxermi/masterplan)", "Accept": "application/json"})
+        try:
+            with urlopen(request, timeout=20) as response:
+                if int(response.headers.get("Content-Length", "0")) > 4_000_000:
+                    raise ValueError("Upstream response too large")
+                raw = response.read(4_000_001)
+                if len(raw) > 4_000_000:
+                    raise ValueError("Upstream response too large")
+                result = json.loads(raw)
+                if not isinstance(result, (dict, list)):
+                    raise ValueError("Unexpected upstream response")
+                with self.lock:
+                    self.cache[url] = (time.monotonic(), result)
                     if len(self.cache) > 450:
                         oldest = min(self.cache, key=lambda k: self.cache[k][0])
                         self.cache.pop(oldest, None)
-                    return result, "live"
-            except (HTTPError, URLError, ValueError, TimeoutError) as exc:
-                if entry:
-                    return entry[1], "stale"
-                raise RuntimeError(f"VVZ unavailable: {exc}") from exc
+                return result, "live"
+        except (HTTPError, URLError, ValueError, TimeoutError) as exc:
+            if entry and not force:
+                return entry[1], "stale"
+            raise RuntimeError(f"VVZ unavailable: {exc}") from exc
 
+    def download(self, url, target, max_bytes=MAX_ZIP_BYTES):
+        """Stream large dump to a temp file; never buffer it in process memory."""
+        self.rate.acquire(wait=True)
+        request = Request(url, headers={"User-Agent": "MasterPlan-study-planner/0.2 (+https://github.com/Saxermi/masterplan)", "Accept": "application/zip"})
+        count = 0
+        try:
+            with urlopen(request, timeout=180) as response, open(target, "wb") as out:
+                if int(response.headers.get("Content-Length", "0")) > max_bytes:
+                    raise ValueError("VVZ dump exceeds the configured limit")
+                while chunk := response.read(1024 * 1024):
+                    count += len(chunk)
+                    if count > max_bytes:
+                        raise ValueError("VVZ dump exceeds the configured limit")
+                    out.write(chunk)
+                out.flush()
+                os.fsync(out.fileno())
+            return count
+        except (HTTPError, URLError, ValueError, TimeoutError) as exc:
+            raise RuntimeError(f"Cannot download VVZ dump: {exc}") from exc
 
     def scheduled(self, url):
-        """Nonblocking lookup. Queue uncached URLs for a *single* rate-limited worker.
-
-        Opening ten course cards does not generate ten immediate upstream requests.
-        """
+        """Nonblocking API fallback; a single worker drains requests behind the gate."""
         with self.lock:
             cached = self.cache.get(url)
             if cached:
@@ -356,26 +397,14 @@ class VvzCache:
                     return
                 url = self.pending.pop(0)
                 self.processing = url
-            while True:
-                with self.lock:
-                    delay = 60.0 - (time.monotonic() - self.last_request)
-                if delay <= 0:
-                    break
-                time.sleep(min(delay, 5))
             try:
-                self.get(url)
+                self.get(url, wait=True)
             except RuntimeError as exc:
-                if str(exc).startswith("VVZ rate limit"):
-                    with self.lock:
-                        self.pending.insert(0, url)
-                    time.sleep(2)
-                else:
-                    with self.lock:
-                        self.failures[url] = str(exc)
+                with self.lock:
+                    self.failures[url] = str(exc)
             finally:
                 with self.lock:
                     self.processing = None
-
 
 def normalize_meetings(courses):
     """Extract real weekly VVZ course slots. Keep source flags and avoid made-up times.
@@ -483,6 +512,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(200, {"encrypted": json.loads(file.read_text(encoding="utf-8")) if file.exists() else None})
         if path == "/api/export":
             return self.respond(200, self.server.store.get())
+        if path == "/api/vvz/dump/status":
+            return self.respond(200, self.server.vvz_dump.status())
         if path == "/api/vvz/search":
             try:
                 query = params.get("q", [""])[0].strip()[:120]
@@ -496,8 +527,13 @@ class Handler(BaseHTTPRequestHandler):
                 limit = min(60, max(1, int(params.get("limit", ["40"])[0])))
                 offset = max(0, min(10000, int(params.get("offset", ["0"])[0])))
                 window = recent_semesters()
-                # Filter out old-only course numbers on the server; the target can
-                # still be a future semester with a recent same-season proxy.
+                if self.server.catalog.available():
+                    result = self.server.catalog.search(query, programme, category, selected_specs,
+                                                        semester, window, limit, offset, select_offering)
+                    result["query"] = vvz_query
+                    return self.respond(200, result)
+                # Initial offline dump is still downloading (or failed); retain
+                # the existing limited live API as a transitional fallback.
                 vvz_query += f" year>={window[0][:4]}"
                 url = CATALOG_BASE + "/api/v0/search/compact?" + urlencode({"q": vvz_query, "offset": offset, "limit": limit, "order_by": "title", "order": "asc"})
                 data, source = self.server.vvz.get(url)
@@ -531,7 +567,12 @@ class Handler(BaseHTTPRequestHandler):
                 unit_id = int(path.rsplit("/", 1)[-1])
                 if not (1 <= unit_id <= 1_000_000_000):
                     raise ValueError("Invalid unit id")
-                data, source = self.server.vvz.get(f"{CATALOG_BASE}/api/v1/unit/{unit_id}/get")
+                if self.server.catalog.available():
+                    data, source = self.server.catalog.unit(unit_id), "local-dump"
+                    if data is None:
+                        return self.respond(404, {"error": "Unit not present in local dump"})
+                else:
+                    data, source = self.server.vvz.get(f"{CATALOG_BASE}/api/v1/unit/{unit_id}/get")
                 return self.respond(200, {"unit": data, "source": source})
             except (RuntimeError, ValueError) as exc:
                 return self.respond(503, {"error": str(exc)})
@@ -540,6 +581,17 @@ class Handler(BaseHTTPRequestHandler):
                 unit_id = int(path.rsplit("/", 1)[-1])
                 if not 1 <= unit_id <= 1_000_000_000:
                     raise ValueError("Invalid unit id")
+                if self.server.catalog.available():
+                    data = self.server.catalog.meetings(unit_id)
+                    unit = self.server.catalog.unit(unit_id) or {}
+                    meetings = normalize_meetings(data)
+                    groups = [{"title": "Group: " + str(group.get("name") or "Exercise"),
+                               "number": str(group.get("number") or ""),
+                               "timeslots": group.get("timeslots") or []}
+                              for group in unit.get("groups", []) if isinstance(group, dict)]
+                    meetings.extend(normalize_meetings(groups))
+                    return self.respond(200, {"status": "ready", "groupStatus": "ready",
+                                              "meetings": meetings, "source": "local-dump"})
                 data, status, source = self.server.vvz.scheduled(f"{CATALOG_BASE}/api/v1/course/get/{unit_id}")
                 # Groups (e.g. exercise sections) live on the LearningUnit model,
                 # not always in Course.timeslots. The second request is queued,
@@ -580,6 +632,8 @@ class Handler(BaseHTTPRequestHandler):
         if origin and origin not in (f"http://localhost:{self.server.server_port}", f"http://127.0.0.1:{self.server.server_port}"):
             return self.respond(403, {"error": "Cross-origin writes are blocked"})
         path = urlsplit(self.path).path
+        if path == "/api/vvz/dump/check":
+            return self.respond(200, self.server.vvz_dump.check(force=True))
         try:
             body = self.get_json()
             if path == "/api/state":
@@ -620,7 +674,14 @@ def main():
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.store = Store()
-    server.vvz = VvzCache(server.store.folder)
+    # The catalogue lives OUTSIDE the personal sync folder, so it can be
+    # re-downloaded and is never backed up with private plans or grades.
+    cache_root = Path(os.environ.get("MASTERPLAN_CACHE_DIR", str(BASE / ".cache" / "vvz"))).expanduser().resolve()
+    server.vvz = VvzCache(cache_root)
+    server.catalog = LocalCatalog(cache_root / "database.sqlite", DEGREES, CATEGORY_PATHS,
+                                  ELIGIBLE_CORE_PROGRAMMES, SPECIALISATIONS)
+    server.vvz_dump = VvzDump(cache_root, server.vvz, server.catalog)
+    server.vvz_dump.check()  # async; never delays opening the local browser
     url = f"http://127.0.0.1:{args.port}/"
     print(f"MasterPlan: {url}\nData: {server.store.folder}\nCtrl+C to stop", flush=True)
     if not args.no_browser:

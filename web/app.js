@@ -39,6 +39,7 @@ function beginMeetingSync(){if(meetingTimer)clearInterval(meetingTimer);meetingT
 
 let guidelines = null;
 let comparisonView = 'plans', comparison = {leftPlan:null,leftSemester:null,rightPlan:null,rightSemester:null};
+let dumpStatus = null, dumpStatusTimer = null;
 let state, page = 'dashboard', results = [], searchParams = {q:'',programme:'cse',category:'core',semester:'recent'}, searchState = '', gradesCache = null, gradesPassword = null;
 
 async function request(url, method='GET', data=null) {
@@ -57,7 +58,7 @@ async function save(mutator) {
   catch(err) {state=before;updateStatus(tr('Speicherfehler','Save error'));notify(err.message + (err.message.includes('Revision') ? ' — '+tr('Bitte Seite neu laden.','Please reload.') : ''));render();}
 }
 function updateStatus(msg) {$('#save-status').textContent=msg;}
-function changePage(next) {page=next;gradesCache=null;gradesPassword=null;$('#sidebar').classList.remove('open');render();if(next==='settings')loadFolder();}
+function changePage(next) {page=next;gradesCache=null;gradesPassword=null;$('#sidebar').classList.remove('open');render();if(next==='settings'){loadFolder();refreshDumpStatus();}}
 function pill(text,type='') {return `<span class="pill ${type}">${escape(text)}</span>`;}
 function button(text,action,extra='',cls='smallbtn'){return `<button class="${cls}" data-action="${action}" ${extra}>${text}</button>`;}
 function pageHeader(title,desc,action='') {return `<div class="row between wrap" style="margin-bottom:22px"><div><h1 class="page-title">${title}</h1><p class="subtitle" style="margin-bottom:0">${desc}</p></div>${action}</div>`;}
@@ -294,7 +295,7 @@ function schedule() {
         <div class="actions" style="margin-top:14px"><button class="button" type="submit">${tr('Termin speichern','Save event')}</button></div></form>`:
         `<p class="note">${tr('Du hast diesem Semester noch keine Kurse zugewiesen. Wähle zuerst Kurse aus deiner Merkliste.','No courses have been assigned this term. Choose them from your shortlist first.')}</p>${button(tr('Zur Semesterplanung','Go to semester planning'),'go-semesters')}`}
     </div><div class="card spaced"><h2 class="section-title">${tr('Kurse und Termine im ausgewählten Semester','Courses and events this semester')}</h2>
-    <p class="hint">${tr('VVZ-Termine werden automatisch im Hintergrund geladen (maximal eine neue API-Abfrage pro Minute). Wähle die gewünschten Slots, z. B. deine Übungsgruppe, aus. Bereits manuelle Termine werden nicht überschrieben.','VVZ meetings are loaded automatically in the background (at most one new API request per minute). Choose the relevant slots such as your exercise group. Manual events are never overwritten.')}</p>
+    <p class="hint">${tr('VVZ-Termine werden automatisch im Hintergrund geladen (höchstens zwei VVZAPI-Anfragen pro Minute; nur bei Bedarf online). Wähle die gewünschten Slots, z. B. deine Übungsgruppe, aus. Bereits manuelle Termine werden nicht überschrieben.','VVZ meetings are loaded automatically in the background (at most two VVZAPI requests per minute; online only if needed). Choose the relevant slots such as your exercise group. Manual events are never overwritten.')}</p>
     ${courses.map(c=>{const info=c.unitId?meetingData.get(String(c.unitId)):null;const slots=info?.meetings||[];return `<div class="meeting-unit"><div class="course-card"><div><div class="course-name">${escape(c.title)}</div><div class="course-meta">${escape(c.number||'')} · ${trRole(c.role)} ${c.proxy?'· Proxy '+semName(c.sourceSemester):''}</div>${courseLinks(c)}</div>${p.courses.some(x=>x.id===c.id)?button(tr('Manuelle Termine bearbeiten','Edit meetings'),'edit-events',`data-id="${attrs(c.id)}"`):''}</div>
       ${c.unitId?(info?.status==='ready'?slots.length?`<div class="meeting-options"><div class="small muted">${tr('Offizielle VVZ-Zeitfenster – frei auswählen','Official VVZ time slots – select as needed')}${c.proxy?` · ${tr('Historischer Proxy','Historical proxy')}: ${semName(c.sourceSemester)}`:''}${info.changed?` · ⚠ ${tr('VVZ-Termine geändert','VVZ schedule changed')}`:''}${info.groupStatus==='queued'?` · ${tr('Übungsgruppen werden nachgeladen','Exercise groups loading')}`:''}</div>${slots.map((m,i)=>`<label class="meeting-option"><input type="checkbox" data-slot="${attrs(c.id)}" value="${i}" ${c.events?.some(e=>e.apiSlot===m.slotKey)?'checked':''}> <span>${escape(m.label||'')} · ${escape(['Mo','Di','Mi','Do','Fr','Sa','So'][m.day]||'')} ${escape(m.start||'')}–${escape(m.end||'')} · ${escape([m.building,m.floor,m.room].filter(Boolean).join(' '))}${m.date?` · ${escape(m.date)}`:''}</span></label>`).join('')}${button(tr('Auswahl übernehmen','Apply selected slots'),'apply-vvz-slots',`data-id="${attrs(c.id)}"`)}</div>`:`<p class="small muted">${tr('Keine regulären Zeiten in der API; manuelle Eingabe möglich.','No regular times returned; manual entry available.')}</p>`:`<p class="small muted">${info?.status==='failed'?escape(info.error):tr('VVZ-Termine werden geladen / warten auf API-Limit…','Loading VVZ meetings / waiting for API rate limit…')}</p>`):`<p class="small muted">${tr('Manueller Kurs – keine VVZ-Kennung vorhanden.','Manual course – no VVZ unit ID.')}</p>`}</div>`;}).join('')||`<p class="muted small">${tr('Keine Kurse','No courses')}</p>`}</div>`;
 }
@@ -378,6 +379,12 @@ function settings() {
   <div class="grid columns-2"><div class="card"><h2 class="section-title">${tr('Speicherort','Storage folder')}</h2><p class="muted small">${tr('Wähle einen lokalen Ordner oder einen synchronisierten Cloud-Ordner (z. B. Nextcloud/OneDrive).','Choose a local folder or a cloud-synced folder (e.g. Nextcloud/OneDrive).')}</p><div id="folder-label" class="monospace tiny muted" style="overflow-wrap:anywhere">${tr('Lade Speicherort…','Loading storage path…')}</div><div class="actions" style="margin-top:16px">${button(tr('Datenordner verschieben','Move data folder'),'move-folder')}${button(tr('Bestehenden Ordner öffnen','Open existing folder'),'open-folder')}</div><div class="line"></div><p class="hint">${tr('Aus Sicherheitsgründen muss ein lokaler Ordnerpfad angegeben werden. Der Browser kann nicht automatisch auf deine Cloud zugreifen.','For security, provide a local folder path. The browser cannot automatically access your cloud.')}</p></div>
   <div class="card"><h2 class="section-title">${tr('Sicherung / Wiederherstellung','Backup / restore')}</h2><p class="muted small">${tr('Exportiert ausschließlich deine kompakten Studienpläne, keine VVZ-Kursdatenbank und keine Noten. Noten bleiben in grades.enc im gewählten Datenordner.','Exports compact study plans only, without the VVZ database or grades. Grades remain in grades.enc in your chosen data folder.')}</p><div class="actions">${button(tr('JSON exportieren','Export JSON'),'export-data','','button')}<label class="smallbtn" style="margin:0;cursor:pointer">${tr('JSON importieren','Import JSON')}<input type="file" accept=".json,application/json" id="import-file" hidden></label></div></div>
   <div class="card"><h2 class="section-title">${tr('Sprache & Darstellung','Language & appearance')}</h2><div class="row wrap"><button class="smallbtn" data-action="set-de">Deutsch</button><button class="smallbtn" data-action="set-en">English</button><button class="smallbtn" data-action="set-light">☀ Light</button><button class="smallbtn" data-action="set-dark">☾ Dark</button></div><div class="line"></div><div class="small muted">${tr('Schema-Version','Schema version')}: ${state.schema} · ${tr('Revision','Revision')}: ${state.revision}</div></div>
+  <div class="card"><h2 class="section-title">${tr('Lokaler VVZ-Katalog','Offline VVZ catalogue')}</h2>
+  <p class="small muted">${tr('Der vollständige ETH-Katalog wird einmalig heruntergeladen und danach lokal durchsucht. Alle 24 Stunden werden nur die VVZ-Dump-Metadaten geprüft. Eine neue Datenbank wird ausschließlich bei einer Änderung geladen. Maximal zwei externe Anfragen pro Minute – für Metadaten, Dump und Fallback zusammen.','The ETH catalogue is downloaded once and searched offline. Dump metadata is checked at most every 24 hours; only changes trigger a new download. Two upstream requests per minute at most, shared by all endpoints.')}</p>
+  <div id="dump-status" class="small muted" style="overflow-wrap:anywhere">${escape(dumpStatus?.checking ? tr('Datenbank wird geprüft oder geladen…','Checking or downloading catalogue…') : dumpStatus?.available ? tr('Lokaler Katalog verfügbar','Offline catalogue ready') : tr('Noch kein lokaler Katalog vorhanden','No offline catalogue available yet'))}</div>
+  <div class="actions" style="margin-top:14px">${button(tr('Jetzt nach Updates suchen','Check for updates'),'check-dump')}
+  <a class="smallbtn" href="https://github.com/markbeep/vvzapi" target="_blank" rel="noopener noreferrer">VVZAPI</a></div>
+  <p class="hint">${tr('Die heruntergeladene Datenbank liegt im separaten, von Git ignorierten Cache – nicht im persönlichen Cloud-Speicherordner.','The downloaded catalogue lives in a separate gitignored cache, outside your private cloud-synced folder.')}</p></div>
   <div class="card"><h2 class="section-title">${tr('Quellen & Datenschutz','Sources & privacy')}</h2><p class="small muted">MasterPlan ist keine offizielle ETH-Anwendung. Die Kursdaten stammen von der unabhängigen <a href="https://github.com/markbeep/vvzapi" target="_blank" rel="noopener noreferrer">VVZAPI</a>. Verbindlich sind deine geltenden <a href="https://ethz.ch/content/dam/ethz/special-interest/study-programme-websites/ms-compsci-and-eng-dam/documents/master-programme/MSc-CSE-Guidelines.pdf" target="_blank" rel="noopener noreferrer">MSc CSE Guidelines</a> und das ETH-Studienreglement.</p><p class="hint">${tr('Persönliche Daten werden nur auf deinem eigenen Rechner gespeichert; VVZAPI wird für Katalogsuchen und das Nachladen von Veranstaltungsterminen kontaktiert.','Personal data stays on your own computer; VVZAPI is contacted for course searches and to load actual meeting times.')}</p></div></div>`;
 }
 
@@ -446,6 +453,7 @@ async function executeAction(action,element) {
   if(action==='add-result'||action==='add-extra')return makeFromSearch(element.dataset.number,action==='add-extra');
   if(action==='add-event'){changePage('schedule');return;}
   if(action==='edit-events')return editEvents(course,p.id);
+  if(action==='check-dump'){try{dumpStatus=await request('/api/vvz/dump/check','POST',{});render();refreshDumpStatus();notify(tr('VVZ-Abgleich gestartet.','VVZ sync started.'));}catch(e){notify(e.message);}return;}
   if(action==='move-folder'||action==='open-folder'){const folder=prompt(tr('Absoluter lokaler Ordnerpfad (kann im Cloud-Sync-Ordner liegen)','Absolute local folder path (may reside in cloud-synced folder)'),$('#folder-label')?.textContent||'');if(!folder)return;try{const x=await request('/api/storage','POST',{mode:action==='move-folder'?'move':'open',folder});state=x.state;notify(tr('Datenordner aktualisiert.','Data folder updated.'));render();loadFolder();}catch(e){notify(e.message);}return;}
   if(action==='export-data'){const b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(b),a=document.createElement('a');a.href=url;a.download='masterplan-export.json';a.click();URL.revokeObjectURL(url);return;}
   if(action==='lock-grades'){gradesCache=null;gradesPassword=null;return render();}
@@ -453,6 +461,20 @@ async function executeAction(action,element) {
   if(action==='grade-save'){try{await saveGrades();notify(tr('Noten verschlüsselt gespeichert.','Grades encrypted and saved.'));}catch(e){notify(e.message);}return;}
   if(action==='set-de'||action==='set-en')return save(s=>s.language=action==='set-de'?'de':'en');
   if(action==='set-light'||action==='set-dark')return save(s=>s.theme=action==='set-light'?'light':'dark');
+}
+async function refreshDumpStatus(){
+  if(dumpStatusTimer){clearTimeout(dumpStatusTimer);dumpStatusTimer=null;}
+  if(page!=='settings')return;
+  try{
+    dumpStatus=await request('/api/vvz/dump/status');
+    const el=$('#dump-status');
+    if(el){
+      const phase={checking:tr('Prüfe Änderungsmetadaten…','Checking metadata…'),downloading:tr('Lade den VVZ-Dump herunter…','Downloading the VVZ dump…'),validating:tr('Prüfe SQLite-Datenbank…','Validating SQLite database…'),ready:tr('Lokale Datenbank einsatzbereit','Offline catalogue ready'),stale:tr('Lokale Datenbank wird weiterverwendet','Using the last valid offline catalogue'),missing:tr('Noch kein lokaler Katalog','No offline catalogue yet'),failed:tr('Erstdownload fehlgeschlagen','Initial download failed')}[dumpStatus.phase]||dumpStatus.phase;
+      const last=dumpStatus.lastChecked?new Date(dumpStatus.lastChecked*1000).toLocaleString(state.language==='de'?'de-CH':'en-GB'):'—';
+      el.textContent=`${phase} · ${dumpStatus.available?tr('Offline-Suche verfügbar','Offline search available'):tr('Fallback-API','Fallback API')} · ${tr('Letzte Prüfung','Last check')}: ${last}${dumpStatus.error?' · '+dumpStatus.error:''}`;
+    }
+    if(dumpStatus.checking&&page==='settings')dumpStatusTimer=setTimeout(refreshDumpStatus,3500);
+  }catch(e){const el=$('#dump-status');if(el)el.textContent=e.message;}
 }
 async function loadFolder(){try{const x=await request('/api/storage');const e=$('#folder-label');if(e)e.textContent=x.folder;}catch(e){notify(e.message);}}
 function base64(bytes){let b='';for(const x of bytes)b+=String.fromCharCode(x);return btoa(b);}
@@ -475,4 +497,4 @@ addEventListener('submit',async event=>{const form=event.target;if(form.id==='se
 $('#lang-toggle').addEventListener('click',()=>save(s=>s.language=s.language==='de'?'en':'de'));
 $('#theme-toggle').addEventListener('click',()=>save(s=>s.theme=s.theme==='light'?'dark':'light'));
 $('#menu-toggle').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
-(async()=>{try{state=await request('/api/state');guidelines=await request('/api/guidelines').catch(()=>null);render();updateStatus(tr('Lokal gespeichert','Saved locally'));if(page==='settings')loadFolder();}catch(e){$('#app').innerHTML=`<div class="card">${escape(e.message)}</div>`;}})();
+(async()=>{try{state=await request('/api/state');guidelines=await request('/api/guidelines').catch(()=>null);render();updateStatus(tr('Lokal gespeichert','Saved locally'));if(page==='settings'){loadFolder();refreshDumpStatus();}}catch(e){$('#app').innerHTML=`<div class="card">${escape(e.message)}</div>`;}})();
