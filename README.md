@@ -18,6 +18,32 @@ The default bind address is **`127.0.0.2:8765`** (as requested). If this loopbac
 
 **German:** `sh run.sh` starten und `http://127.0.0.2:8765/` öffnen. Keine Kommandozeile ist für die Nutzung der Weboberfläche erforderlich, wenn die App schon läuft. Für den ersten lokalen Start wird Python benötigt. Windows: `run.bat` doppelklicken.
 
+## Fehlerbehebung beim Start / Startup troubleshooting
+
+Wenn `FileNotFoundError: guidelines/cse-guidelines.json` erscheint, fehlt eine **Projektdatei** – es handelt sich weder um ein Python-Paket noch um einen VVZ-Fehler. Bitte nicht versuchen, die Datei mit pip zu installieren.
+
+Prüfe insbesondere, ob der ausgeführte `server.py` tatsächlich aus dem gewünschten Ordner stammt:
+
+```sh
+cd ~/Nextcloud/masterplan
+pwd -P
+readlink -f run.sh
+readlink -f server.py
+ls -l guidelines/cse-guidelines.json
+git status --short
+```
+
+Wenn in der Fehlermeldung `~/.local/share/Trash/files/...` auftaucht, liegt oft eine unvollständige Kopie oder ein Symlink auf den Papierkorb vor. Lösche **keine** vorhandenen `user-data/`-Dateien oder persönlichen Backups. Klone stattdessen für die Diagnose eine vollständige Kopie:
+
+```sh
+cd ~
+git clone https://github.com/Saxermi/masterplan.git masterplan-clean
+cd masterplan-clean
+sh run.sh
+```
+
+MasterPlan benötigt Python 3.10+. Ein installiertes Anaconda-Python 3.9 kann `python3` im PATH überlagern. `run.sh` prüft nun die Interpreter-Version und sucht alternativ nach `python3.10` bis `python3.14`. Du kannst explizit starten mit `MASTERPLAN_PYTHON=python3.14 sh run.sh`; ein gewöhnliches `python3 --version` mit 3.14 ist bereits geeignet.
+
 ## Implemented / Umgesetzt
 
 - Bilingual **Deutsch / English**, Academic Minimal light/dark interface and responsive PWA manifest.
