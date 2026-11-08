@@ -39,6 +39,21 @@ def validate_db(path):
     return True
 
 
+def prepare_db(path):
+    """The upstream export has no indexes. Build these once per snapshot."""
+    with closing(sqlite3.connect(path)) as con:
+        con.executescript("""
+            CREATE INDEX IF NOT EXISTS mp_unit_id ON learningunit(id);
+            CREATE INDEX IF NOT EXISTS mp_unit_number_term ON learningunit(number, semkez DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS mp_unit_term ON learningunit(semkez);
+            CREATE INDEX IF NOT EXISTS mp_link_section_unit ON unitsectionlink(section_id, unit_id);
+            CREATE INDEX IF NOT EXISTS mp_link_unit_section ON unitsectionlink(unit_id, section_id);
+            CREATE INDEX IF NOT EXISTS mp_path_id ON sectionpathview(id);
+            CREATE INDEX IF NOT EXISTS mp_course_unit ON course(unit_id);
+            CREATE INDEX IF NOT EXISTS mp_rating_number ON rating(course_number);
+        """)
+
+
 def install_zip(zip_file, target):
     """Validate ZIP and SQLite before atomically replacing a usable database."""
     target = Path(target)
@@ -67,6 +82,7 @@ def install_zip(zip_file, target):
             if length != info.file_size:
                 raise ValueError("Incomplete SQLite database from VVZ dump")
         validate_db(candidate)
+        prepare_db(candidate)
         os.replace(candidate, target)
         return length
     finally:
@@ -78,9 +94,10 @@ def _json_value(value, fallback):
     if value is None:
         return fallback
     if isinstance(value, (list, dict)):
-        return value
+        return value if isinstance(value, type(fallback)) else fallback
     try:
-        return json.loads(value)
+        result = json.loads(value)
+        return result if isinstance(result, type(fallback)) else fallback
     except (ValueError, TypeError):
         return fallback
 
@@ -99,17 +116,37 @@ class LocalCatalog:
         self.category_paths = category_paths
         self.eligible_cores = eligible_core_programmes
         self.specialisations = specialisations
+        self._prepared = None
 
     def available(self):
         return self.filename.is_file()
 
-    @staticmethod
-    def _path_filter(terms, params):
-        """Match within ONE section path: not two unrelated offerings of a course."""
+    def _ensure_indexes(self):
+        # Upgrade old installed snapshots too, without downloading them again.
+        stat = self.filename.stat()
+        signature = (stat.st_ino, stat.st_size, stat.st_mtime_ns)
+        if signature != self._prepared:
+            prepare_db(self.filename)
+            stat = self.filename.stat()
+            self._prepared = (stat.st_ino, stat.st_size, stat.st_mtime_ns)
+
+    def _path_filter(self, terms, params):
+        """Programme roots and specialisation segments must not match substrings."""
         predicates = []
         for term in terms:
-            params.extend([_path_like(term), _path_like(term)])
-            predicates.append("(LOWER(COALESCE(p.path_en,'')) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(p.path_de,'')) LIKE ? ESCAPE '\\')")
+            columns = ("LOWER(COALESCE(p.path_en,''))", "LOWER(COALESCE(p.path_de,''))")
+            if term in self.degrees.values():
+                exact = term.lower()
+                pattern = _path_like(term)[1:-1] + " > %"
+                predicates.append("(" + " OR ".join(f"({col}=? OR {col} LIKE ? ESCAPE '\\')" for col in columns) + ")")
+                params.extend([exact, pattern, exact, pattern])
+            elif term in self.specialisations:
+                pattern = "% > " + _path_like(term)[1:-1]
+                predicates.append("(" + " OR ".join(f"({col} LIKE ? ESCAPE '\\' OR {col} LIKE ? ESCAPE '\\')" for col in columns) + ")")
+                params.extend([pattern, pattern + " > %", pattern, pattern + " > %"])
+            else:
+                params.extend([_path_like(term), _path_like(term)])
+                predicates.append("(" + " OR ".join(f"{col} LIKE ? ESCAPE '\\'" for col in columns) + ")")
         return " AND ".join(predicates)
 
     def search(self, query, programme, category, specialisations, semester, window, limit, offset, select_offering):
@@ -139,66 +176,80 @@ class LocalCatalog:
                                     for cat in paths for name in specialisations]
             else:
                 section_variants = [[part for part in (path, cat) if part] for cat in paths]
-        filters = ["u.number IS NOT NULL", "u.semkez >= ?"]
-        values = [window[0]]
+        if category == "specialisation" and not specialisations:
+            return {"results": [], "total": 0, "upstreamTotal": 0, "source": "local-dump",
+                    "recentSemesters": window, "eligibleCoreElective": False}
+        cutoff = window[0] if semester == "recent" else min(window[0], semester)
+        ceiling = window[-1] if semester == "recent" else semester
+        filters = ["u.number IS NOT NULL", "u.semkez >= ?", "u.semkez <= ?"]
+        values = [cutoff, ceiling]
         if semester != "recent":
-            # Filter before pagination: otherwise pages can be mostly empty when
-            # the student is planning a future spring/autumn proxy semester.
-            filters.extend(["SUBSTR(u.semkez,5,1)=?", "u.semkez<=?"])
-            values.extend([semester[-1], semester])
+            filters.append("SUBSTR(u.semkez,5,1)=?")
+            values.append(semester[-1])
+        # Resolve section paths once, then use the section->unit index. A
+        # correlated path scan for every learning unit is prohibitively slow.
         scope_sql = []
+        scope_values = []
         for terms in section_variants:
-            if not terms:
-                continue
-            args = []
-            where = self._path_filter(terms, args)
-            scope_sql.append("EXISTS (SELECT 1 FROM unitsectionlink l JOIN sectionpathview p ON p.id=l.section_id "
-                             "WHERE l.unit_id=u.id AND " + where + ")")
-            values.extend(args)
+            if terms:
+                scope_sql.append("(" + self._path_filter(terms, scope_values) + ")")
         if scope_sql:
-            filters.append("(" + " OR ".join(scope_sql) + ")")
+            filters.append("u.id IN (SELECT l.unit_id FROM unitsectionlink l WHERE l.section_id IN "
+                           "(SELECT p.id FROM sectionpathview p WHERE " + " OR ".join(scope_sql) + "))")
+            values.extend(scope_values)
         q = query.strip()[:120]
         if q:
             if len(q) > 3 and q[:3].isdigit() and "-" in q:
                 filters.append("LOWER(u.number) LIKE ? ESCAPE '\\'")
                 values.append(_path_like(q))
             else:
-                filters.append("(LOWER(COALESCE(u.title,'')) LIKE ? ESCAPE '\\' OR "
-                               "LOWER(COALESCE(u.title_english,'')) LIKE ? ESCAPE '\\')")
-                values.extend([_path_like(q), _path_like(q)])
+                # Word-wise search tolerates the official abbreviated CSE title.
+                q = q.lower().replace("computational science and engineering", "cse")
+                for word in q.split():
+                    filters.append("(LOWER(COALESCE(u.title,'')) LIKE ? ESCAPE '\\' OR "
+                                   "LOWER(COALESCE(u.title_english,'')) LIKE ? ESCAPE '\\')")
+                    values.extend([_path_like(word), _path_like(word)])
+        # A course reclassified in the requested term must not leak into the old
+        # category through a historic entry. Proxies only apply if no newer
+        # offering in this season exists.
+        filters.append("NOT EXISTS (SELECT 1 FROM learningunit newer WHERE newer.number=u.number "
+                       "AND newer.semkez>u.semkez AND newer.semkez<=? "
+                       "AND SUBSTR(newer.semkez,5,1)=SUBSTR(u.semkez,5,1))")
+        values.append(ceiling)
         where = " AND ".join(filters)
-        with self.lock, closing(db_connect(self.filename)) as con:
-            total = con.execute("SELECT COUNT(DISTINCT u.number) FROM learningunit u WHERE " + where, values).fetchone()[0]
-            keys = [row[0] for row in con.execute(
-                "SELECT u.number FROM learningunit u WHERE " + where + " GROUP BY u.number "
-                "ORDER BY LOWER(COALESCE(MAX(u.title_english),MAX(u.title),u.number)), u.number LIMIT ? OFFSET ?",
-                [*values, limit, offset],
-            )]
-            results = []
-            for number in keys:
-                records = con.execute("SELECT id,number,semkez,title,title_english,credits,levels,language "
-                                      "FROM learningunit WHERE number=? ORDER BY semkez DESC,id DESC", (number,)).fetchall()
-                if not records:
-                    continue
-                semesters = {r["semkez"]: r["id"] for r in records if r["semkez"]}
-                # Prefer recent semester information, without discarding older proxy matches.
-                rec = next((r for r in records if r["semkez"] >= window[0]), records[0])
-                rating = con.execute("SELECT (recommended+engaging+difficulty+effort+resources)/5.0 "
-                                     "FROM rating WHERE course_number=?", (number,)).fetchone()
-                item = {"number": number, "title": rec["title"], "title_english": rec["title_english"],
-                        "credits": rec["credits"], "levels": _json_value(rec["levels"], []),
-                        "language": rec["language"], "rating": round(rating[0], 2) if rating and rating[0] is not None else None,
-                        "semesters": semesters}
-                if semester == "recent":
-                    item["offering"] = next((select_offering(semesters, term, window[0]) for term in window if term in semesters), None)
-                else:
-                    item["offering"] = select_offering(semesters, semester, window[0])
-                if item["offering"] and item["offering"].get("unit_id"):
-                    results.append(item)
-            return {"results": results, "total": total, "upstreamTotal": total, "source": "local-dump",
-                    "recentSemesters": window, "eligibleCoreElective": category == "eligible-core"}
+        with self.lock:
+            self._ensure_indexes()
+            with closing(db_connect(self.filename)) as con:
+                rows = con.execute("SELECT u.id,u.number,u.semkez,u.title,u.title_english,u.credits,u.levels,u.language "
+                                   "FROM learningunit u WHERE " + where + " ORDER BY u.semkez DESC,u.id DESC", values).fetchall()
+                grouped = {}
+                for row in rows:
+                    grouped.setdefault(row["number"], []).append(row)
+                numbers = sorted(grouped, key=lambda n: ((grouped[n][0]["title_english"] or grouped[n][0]["title"] or n).lower(), n))
+                total = len(numbers)
+                results = []
+                for number in numbers[offset:offset + limit]:
+                    records = grouped[number]
+                    semesters = {}
+                    for r in records:
+                        semesters.setdefault(r["semkez"], r["id"])
+                    wanted = next((term for term in reversed(window) if term in semesters), None) if semester == "recent" else semester
+                    offering = select_offering(semesters, wanted, cutoff) if wanted else None
+                    if not offering or not offering.get("unit_id"):
+                        continue
+                    rec = next(r for r in records if r["id"] == offering["unit_id"])
+                    rating = con.execute("SELECT (recommended+engaging+difficulty+effort+resources)/5.0 "
+                                         "FROM rating WHERE course_number=?", (number,)).fetchone()
+                    results.append({"number": number, "title": rec["title"], "title_english": rec["title_english"],
+                                    "credits": rec["credits"], "levels": _json_value(rec["levels"], []),
+                                    "language": rec["language"], "rating": round(rating[0], 2) if rating and rating[0] is not None else None,
+                                    "semesters": semesters, "offering": offering})
+                return {"results": results, "total": total, "upstreamTotal": total, "source": "local-dump",
+                        "recentSemesters": window, "eligibleCoreElective": category == "eligible-core"}
 
     def unit(self, unit_id):
+        with self.lock:
+            self._ensure_indexes()
         with self.lock, closing(db_connect(self.filename)) as con:
             r = con.execute("SELECT * FROM learningunit WHERE id=?", (unit_id,)).fetchone()
             if r is None:
@@ -210,6 +261,8 @@ class LocalCatalog:
             return result
 
     def meetings(self, unit_id):
+        with self.lock:
+            self._ensure_indexes()
         with self.lock, closing(db_connect(self.filename)) as con:
             rows = con.execute("SELECT number,title,timeslots FROM course WHERE unit_id=? ORDER BY number", (unit_id,)).fetchall()
             return [{"number": r["number"], "title": r["title"], "timeslots": _json_value(r["timeslots"], [])}
