@@ -15,9 +15,9 @@ import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
+from vvz_schedule import parse_official_courses
 from vvz_dump import LocalCatalog, VvzDump, MAX_ZIP_BYTES
 
 BASE = Path(__file__).resolve().parent
@@ -63,9 +63,9 @@ CATEGORY_PATHS = {
     "elective": ["electives"],
     "specialisation": ["field of specialization", "fields of specialization", "specialisation"],
     "case": ["case studies"],
-    "project": ["semester project", "term project", "semester thesis"],
+    "project": ["semester project", "term project", "semester thesis", "semester paper"],
     "sip": ["science in perspective"],
-    "thesis": ["master thesis"],
+    "thesis": ["master thesis", "master's thesis"],
     "scientific": ["scientific works"],
     "requirement": [],  # Admission requirements are personal, not a VVZ category.
 }
@@ -166,7 +166,7 @@ def migrate_state(x):
 
 
 def valid_state(x):
-    if not isinstance(x, dict) or x.get("schema") != 2 or not isinstance(x.get("plans"), list):
+    if not isinstance(x, dict) or type(x.get("revision")) is not int or x["revision"] < 0 or x.get("schema") != 2 or not isinstance(x.get("plans"), list):
         return False
     if any("grade" in str(k).lower() or "notevalue" in str(k).lower() for k in x):
         return False
@@ -312,6 +312,22 @@ class VvzCache:
         self.folder = Path(folder)
         self.rate = rate or UpstreamRateLimit()
 
+    def _schedule_file(self, url):
+        if urlsplit(url).hostname == 'www.vvz.ethz.ch':
+            return self.folder / 'schedules' / (hashlib.sha256(url.encode()).hexdigest() + '.json')
+        return None
+
+    def _read_schedule(self, url):
+        file = self._schedule_file(url)
+        if file and file.exists():
+            try:
+                value = json.loads(file.read_text(encoding='utf-8'))
+                if isinstance(value, dict) and isinstance(value.get('courses'), list) and isinstance(value.get('checked'), (int, float)):
+                    return value
+            except (ValueError, OSError):
+                pass
+        return None
+
     def get(self, url, wait=False, force=False):
         with self.lock:
             now = time.monotonic()
@@ -324,7 +340,7 @@ class VvzCache:
             if entry and not force:
                 return entry[1], "stale"
             raise
-        request = Request(url, headers={"User-Agent": "MasterPlan-study-planner/0.2 (+https://github.com/Saxermi/masterplan)", "Accept": "application/json"})
+        request = Request(url, headers={"User-Agent": "MasterPlan-study-planner/0.2 (+https://github.com/Saxermi/masterplan)", "Accept": "text/html" if self._schedule_file(url) else "application/json"})
         try:
             with urlopen(request, timeout=20) as response:
                 if int(response.headers.get("Content-Length", "0")) > 4_000_000:
@@ -332,7 +348,11 @@ class VvzCache:
                 raw = response.read(4_000_001)
                 if len(raw) > 4_000_000:
                     raise ValueError("Upstream response too large")
-                result = json.loads(raw)
+                if self._schedule_file(url):
+                    result = parse_official_courses(raw.decode('utf-8'))
+                    Store._atomic(self._schedule_file(url), {'checked': time.time(), 'courses': result})
+                else:
+                    result = json.loads(raw)
                 if not isinstance(result, (dict, list)):
                     raise ValueError("Unexpected upstream response")
                 with self.lock:
@@ -341,7 +361,7 @@ class VvzCache:
                         oldest = min(self.cache, key=lambda k: self.cache[k][0])
                         self.cache.pop(oldest, None)
                 return result, "live"
-        except (HTTPError, URLError, ValueError, TimeoutError) as exc:
+        except (OSError, ValueError) as exc:
             if entry and not force:
                 return entry[1], "stale"
             raise RuntimeError(f"VVZ unavailable: {exc}") from exc
@@ -363,15 +383,20 @@ class VvzCache:
                 out.flush()
                 os.fsync(out.fileno())
             return count
-        except (HTTPError, URLError, ValueError, TimeoutError) as exc:
+        except (OSError, ValueError) as exc:
             raise RuntimeError(f"Cannot download VVZ dump: {exc}") from exc
 
     def scheduled(self, url):
         """Nonblocking API fallback; a single worker drains requests behind the gate."""
         with self.lock:
+            disk = self._read_schedule(url)
             cached = self.cache.get(url)
+            if not cached and disk:
+                age = max(0, time.time() - disk.get('checked', 0))
+                cached = (time.monotonic() - age, disk['courses'])
+                self.cache[url] = cached
             if cached:
-                if time.monotonic() - cached[0] >= 1800 and url not in self.pending and self.processing != url:
+                if time.monotonic() - cached[0] >= (86400 if disk else 1800) and url not in self.pending and self.processing != url:
                     if len(self.pending) < 100:
                         self.pending.append(url)
                         if not self.worker_running:
@@ -379,7 +404,10 @@ class VvzCache:
                             threading.Thread(target=self._run_queue, daemon=True, name="masterplan-vvz-queue").start()
                 return cached[1], "ready", "cached"
             if url in self.failures:
-                return None, "failed", self.failures[url]
+                failed_at, message = self.failures[url]
+                if time.monotonic() - failed_at < 60:
+                    return None, "failed", message
+                del self.failures[url]
             if url not in self.pending and self.processing != url:
                 if len(self.pending) >= 100:
                     return None, "failed", "VVZ request queue full"
@@ -402,7 +430,7 @@ class VvzCache:
                 self.get(url, wait=True)
             except RuntimeError as exc:
                 with self.lock:
-                    self.failures[url] = str(exc)
+                    self.failures[url] = (time.monotonic(), str(exc))
             finally:
                 with self.lock:
                     self.processing = None
@@ -431,8 +459,8 @@ def normalize_meetings(courses):
                 continue
             start, end = slot.get("start_time"), slot.get("end_time")
             if not (0 <= day <= 6 and isinstance(start, str) and isinstance(end, str)
-                    and re.fullmatch(r"[0-2]\d:[0-5]\d", start)
-                    and re.fullmatch(r"[0-2]\d:[0-5]\d", end) and start < end):
+                    and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", start)
+                    and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", end) and start < end):
                 continue
             room = {k: str(slot.get(k) or "")[:100] for k in ("building", "floor", "room")}
             item = {"day": day, "start": start, "end": end, **room,
@@ -440,7 +468,8 @@ def normalize_meetings(courses):
                     "date": str(slot.get("date") or "")[:24],
                     "biweekly": bool(slot.get("biweekly")),
                     "firstHalf": bool(slot.get("first_half_semester")),
-                    "secondHalf": bool(slot.get("second_half_semester"))}
+                    "secondHalf": bool(slot.get("second_half_semester")),
+                    "note": str(course.get("comment") or "")[:1500]}
             # Stable slot identity ensures previously selected slots can be retained.
             item["slotKey"] = hashlib.sha256(json.dumps(item, sort_keys=True).encode()).hexdigest()[:20]
             normalized.append(item)
@@ -482,8 +511,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.headers_common()
         self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # A closed browser connection is not a second application error.
+            self.close_connection = True
 
     def allowed_host(self):
         host = self.headers.get("Host", "").split(":")[0].lower()
@@ -533,35 +566,12 @@ class Handler(BaseHTTPRequestHandler):
                                                         semester, window, limit, offset, select_offering)
                     result["query"] = vvz_query
                     return self.respond(200, result)
-                # Initial offline dump is still downloading (or failed); retain
-                # the existing limited live API as a transitional fallback.
-                vvz_query += f" year>={window[0][:4]}"
-                url = CATALOG_BASE + "/api/v0/search/compact?" + urlencode({"q": vvz_query, "offset": offset, "limit": limit, "order_by": "title", "order": "asc"})
-                data, source = self.server.vvz.get(url)
-                if not isinstance(data, dict) or not isinstance(data.get("results"), list):
-                    raise ValueError("Invalid VVZ search result")
-                results = []
-                for row in data["results"]:
-                    if not isinstance(row, dict):
-                        continue
-                    item = {k: row.get(k) for k in ("number", "title", "title_english", "credits", "semesters", "levels", "language", "rating")}
-                    known = row.get("semesters") or {}
-                    if not isinstance(known, dict) or not any(v >= window[0] and re.fullmatch(r"\d{4}[SW]", v) for v in known):
-                        continue
-                    if semester == "recent":
-                        for target in window:
-                            if target in known:
-                                item["offering"] = select_offering(known, target, window[0])
-                                break
-                        else:
-                            continue
-                    else:
-                        item["offering"] = select_offering(known, semester, window[0])
-                        if not item["offering"]["unit_id"]:
-                            continue
-                    results.append(item)
-                return self.respond(200, {"results": results, "total": len(results), "upstreamTotal": data.get("total"), "source": source, "query": vvz_query, "recentSemesters": window, "eligibleCoreElective": category == "eligible-core"})
-            except (RuntimeError, ValueError, TypeError) as exc:
+                status = self.server.vvz_dump.status()
+                return self.respond(503, {"error": "Der lokale VVZ-Katalog wird vorbereitet. Bitte den Status unter Einstellungen prüfen und die Suche danach erneut starten.",
+                                          "code": "catalog_unavailable", "dump": status})
+            except (ValueError, TypeError) as exc:
+                return self.respond(400, {"error": str(exc)})
+            except (RuntimeError, OSError) as exc:
                 return self.respond(503, {"error": str(exc)})
         if path.startswith("/api/vvz/unit/"):
             try:
@@ -584,15 +594,31 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("Invalid unit id")
                 if self.server.catalog.available():
                     data = self.server.catalog.meetings(unit_id)
-                    unit = self.server.catalog.unit(unit_id) or {}
+                    unit = self.server.catalog.unit(unit_id)
+                    if unit is None:
+                        return self.respond(404, {"error": "Unit not present in local dump"})
                     meetings = normalize_meetings(data)
                     groups = [{"title": "Group: " + str(group.get("name") or "Exercise"),
                                "number": str(group.get("number") or ""),
                                "timeslots": group.get("timeslots") or []}
                               for group in unit.get("groups", []) if isinstance(group, dict)]
                     meetings.extend(normalize_meetings(groups))
-                    return self.respond(200, {"status": "ready", "groupStatus": "ready",
-                                              "meetings": meetings, "source": "local-dump"})
+                    status, source = "ready", "local-dump"
+                    # The export currently omits almost all Course.timeslots.
+                    # Fetch only missing schedules, in the background; persist
+                    # them separately and reuse them offline across restarts.
+                    if any(not c.get("timeslots") for c in data) and unit.get("semkez"):
+                        url = "https://www.vvz.ethz.ch/Vorlesungsverzeichnis/lerneinheit.view?" + urlencode({
+                            "lerneinheitId": unit_id, "semkez": unit["semkez"], "ansicht": "ALLE", "lang": "en"})
+                        official, status, source = self.server.vvz.scheduled(url)
+                        if official is not None:
+                            meetings.extend(normalize_meetings(official))
+                    unique = {(m['day'], m['start'], m['end'], m['building'], m['floor'], m['room'],
+                               m['date'], m['biweekly'], re.sub(r'\s+', '', m['courseNumber'])): m for m in meetings}
+                    return self.respond(200, {"status": "ready", "groupStatus": status,
+                                              "meetings": list(unique.values()), "source": "official-vvz" if source in ("cached", "live") else "local-dump",
+                                              "scheduleStatus": status,
+                                              "error": source if status == "failed" else None})
                 data, status, source = self.server.vvz.scheduled(f"{CATALOG_BASE}/api/v1/course/get/{unit_id}")
                 # Groups (e.g. exercise sections) live on the LearningUnit model,
                 # not always in Course.timeslots. The second request is queued,
@@ -622,8 +648,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", types.get(fp.suffix, "text/plain"))
             self.headers_common()
             self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            return self.wfile.write(content)
+            try:
+                self.end_headers()
+                return self.wfile.write(content)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                self.close_connection = True
+                return
         return self.respond(404, {"error": "Not found"})
 
     def do_POST(self):
@@ -666,6 +696,8 @@ class Handler(BaseHTTPRequestHandler):
                 body["revision"] = old["revision"]
                 return self.respond(200, self.server.store.save(body))
             return self.respond(404, {"error": "Not found"})
+        except RuntimeError as exc:
+            return self.respond(409, {"error": str(exc)})
         except (ValueError, KeyError, json.JSONDecodeError, OSError, TypeError) as exc:
             return self.respond(400, {"error": str(exc)})
 

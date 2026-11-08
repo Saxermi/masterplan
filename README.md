@@ -65,9 +65,9 @@ Default: `./user-data/masterplan.json` and (only if grades are saved) `./user-da
 
 1. On the first start, the local server fetches the small `GET https://vvzapi.ch/api/v1/dump/metadata` JSON (size and `last_modified_ms`). Only if no valid database is installed, or if the metadata changed, it downloads `GET https://vvzapi.ch/api/v1/dump` as a ZIP. Downloaded bytes are streamed to disk instead of held in memory.
 2. The ZIP is checked for expected size, SQLite format, required schema and `PRAGMA quick_check`. Only after a successful validation does an atomic replacement make the new snapshot active. A corrupt or failed download leaves the previously working snapshot usable.
-3. Course catalogue searches, MSc CSE / RW Bachelor / other programme filters, category/section filters, semester and historical-proxy choices, learning-unit details and real lecture/exercise-group timeslots are then queried **locally** using SQLite. No VVZ HTTP requests are needed during normal browsing.
+3. Course catalogue searches, MSc CSE / RW Bachelor / other programme filters, category/section filters, semester and historical-proxy choices, learning-unit details and real lecture/exercise-group timeslots are then queried **locally** using SQLite. No VVZ HTTP requests are needed for catalogue search. Missing weekly schedule data is loaded from the official ETH VVZ only on demand and persisted locally.
 4. The app checks **only metadata** at most once every **24 hours** (and on explicit user request in Settings → Offline VVZ catalogue). If size *and* last modification timestamp are unchanged, the ZIP is **not downloaded again**. Metadata is persisted, so this also survives server restarts. Offline searches remain available while a new snapshot is being downloaded.
-5. A single server-wide limiter covers metadata, ZIP downloads and the temporary online fallback: **maximum one request per minute**, implemented as one reservation every 60 seconds. The VVZ dump endpoint itself permits up to 2/minute; MasterPlan deliberately stays below that limit. The initial download may therefore start 60 seconds after its metadata request. If the dump is unavailable, the previous on-demand VVZ API fallback remains available, but is also throttled.
+5. A single server-wide limiter covers metadata, ZIP downloads and the temporary online fallback: **maximum one request per minute**, implemented as one reservation every 60 seconds. The VVZ dump endpoint itself permits up to 2/minute; MasterPlan deliberately stays below that limit. The initial download may therefore start 60 seconds after its metadata request. If the dump is unavailable, catalogue search reports installation status; existing personal plans remain accessible.
 
 **Persistence / Speicherort:** Default `.cache/vvz/database.sqlite` and `.cache/vvz/metadata.json` in the app directory; override with `MASTERPLAN_CACHE_DIR=/your/cache/folder`. This cache is disposable and **is never copied into `MASTERPLAN_DATA_DIR`** (your personal portable/cloud-sync folder). It is covered by `.gitignore`, along with temporary ZIPs and local SQLite files. All actual study plans and encrypted grades are stored separately.
 
@@ -75,7 +75,7 @@ Default: `./user-data/masterplan.json` and (only if grades are saved) `./user-da
 
 **Source:** VVZAPI is an independent, community-maintained project at [markbeep/vvzapi](https://github.com/markbeep/vvzapi). Its ZIP endpoint is rate-limited; metadata is the documented way to avoid needless downloads. The local dump is not an authoritative statement of individual course eligibility. Always confirm planned lectures and recognition using the official ETH VVZ and your current regulations.
 
-**Offline note:** The installation needs network access for the initial dump. While the download runs, legacy API fallback queries might be rate-limited; if both are unavailable the UI explains the status. A cached snapshot works offline. The dump's freshness is checked only while the local server is running or the user explicitly asks. The downloadable archive can be large, depending on the upstream data. The application has no automatic cloud-sync conflict resolution.
+**Offline note:** The installation needs network access for the initial dump. While the first download runs, catalogue search reports that the local snapshot is being prepared. A cached snapshot works offline. The dump's freshness is checked only while the local server is running or the user explicitly asks. The downloadable archive can be large, depending on the upstream data. The application has no automatic cloud-sync conflict resolution.
 
 ## Guidelines agent contract
 
@@ -126,6 +126,20 @@ The catalogue includes **“MSc Core Courses → CSE Electives”** with a one-c
 A filtered course is **potentially eligible without prior approval**, not guaranteed to be credited: exclusions such as previous Bachelor credit use, category duplication, personal study regulations, and current VVZ classifications still apply. The study planner does not submit ETH credit requests. / Ein Treffer bedeutet **grundsätzlich ohne vorgängige Bewilligung wählbar**, nicht automatisch angerechnet. Vorherige Bachelor-Anrechnung, Doppelzählungen, persönliche Reglementsfassung und aktuelle VVZ-Einstufung müssen geprüft werden.
 
 The **Study plans → Semester vs. semester** view allows comparing any two semesters from the same or different plans side by side, including common/unique modules, category/ECTS/status differences, locked and extra courses. This UI-only selection does not increase the saved study-plan file size. / Unter **Studienpläne → Semester vs. Semester** können zwei beliebige Semester aus gleichen oder unterschiedlichen Plänen modulweise verglichen werden.
+
+### HS26 catalogue and save repairs / Katalog- und Speicherreparaturen
+
+See [verified HS26 example, timings and test commands](docs/hs26-validation.md) and the
+[importable AI Core + Numerical Methods admission-requirement plan](docs/examples/hs26-ai-numerical.json).
+Existing dumps are indexed automatically without downloading them again. Search metadata is tied to
+the selected offering, with exact programme/specialisation scopes and paginated results. Browser
+saves are serialized; external revision conflicts are reported without overwriting the newer version.
+
+The current upstream dump omits most lecture times. Missing weekly schedules are fetched lazily
+from the official ETH VVZ, queued behind the shared one-request-per-minute gate, and persisted
+outside the personal data folder. Cached schedules survive restarts and refresh in the background
+after 24 hours. Irregular/date-specific times still require manual review. Initial catalogue search
+waits for the validated local dump; it does not issue broad compact-API searches during installation.
 
 ### Offline VVZ catalogue / Lokaler VVZ-Katalog
 

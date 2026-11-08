@@ -1,0 +1,184 @@
+{
+  "schema": 2,
+  "revision": 6,
+  "language": "de",
+  "theme": "light",
+  "activePlan": "actual",
+  "actualPlan": {
+    "id": "actual",
+    "name": "HS26 Test: AI Core + Numerical Methods Auflage",
+    "specialisation": "",
+    "semesters": [
+      "2026W",
+      "2027S",
+      "2027W",
+      "2028S"
+    ],
+    "lockedSemesters": [],
+    "courses": [
+      {
+        "id": "a12dde57-2df9-472d-9dcf-9304647d23af",
+        "number": "401-4656-21L",
+        "title": "AI in the Sciences and Engineering",
+        "ects": 6,
+        "semester": "2026W",
+        "role": "core",
+        "status": "planned",
+        "unitId": 204828,
+        "sourceSemester": "2026W",
+        "proxy": false,
+        "reviewAvailable": true,
+        "events": [
+          {
+            "day": 3,
+            "start": "10:15",
+            "end": "12:00",
+            "building": "HG",
+            "floor": "G",
+            "room": "5",
+            "date": null,
+            "biweekly": false,
+            "firstHalf": false,
+            "secondHalf": false,
+            "note": "",
+            "source": "vvz",
+            "apiSlot": "97cd5d2605c292332613",
+            "sourceSemester": "2026W"
+          },
+          {
+            "day": 0,
+            "start": "12:15",
+            "end": "14:00",
+            "building": "ML",
+            "floor": "H",
+            "room": "44",
+            "date": null,
+            "biweekly": false,
+            "firstHalf": false,
+            "secondHalf": false,
+            "note": "",
+            "source": "vvz",
+            "apiSlot": "43d46a4a05751fe4d3c7",
+            "sourceSemester": "2026W"
+          }
+        ],
+        "locked": false,
+        "creditApproved": null
+      },
+      {
+        "id": "32ed71f2-9684-41fa-8fcf-e3393c00940b",
+        "number": "401-2673-00L",
+        "title": "Numerical Methods for CSE",
+        "ects": 9,
+        "semester": "2026W",
+        "role": "requirement",
+        "status": "planned",
+        "unitId": 204354,
+        "sourceSemester": "2026W",
+        "proxy": false,
+        "reviewAvailable": true,
+        "events": [
+          {
+            "day": 4,
+            "start": "08:15",
+            "end": "10:00",
+            "building": "HG",
+            "floor": "F",
+            "room": "26.5",
+            "date": null,
+            "biweekly": false,
+            "firstHalf": false,
+            "secondHalf": false,
+            "note": "exercises start in the first week of the semester",
+            "source": "vvz",
+            "apiSlot": "c60dae28dda158e78754",
+            "sourceSemester": "2026W"
+          },
+          {
+            "day": 1,
+            "start": "08:15",
+            "end": "10:00",
+            "building": "HG",
+            "floor": "G",
+            "room": "19.1",
+            "date": null,
+            "biweekly": false,
+            "firstHalf": false,
+            "secondHalf": false,
+            "note": "This course is designed in a flipped classroom format based on video tutorials and supplemented by a weekly question-and-answer session, for which attendance is highly recommended.The class will be in HG G 5 in the first week of the semester (15 September 2026) and will take place in HG G 19.1 for the rest of the semester.",
+            "source": "vvz",
+            "apiSlot": "8615b1bf3d56ae47ed5f",
+            "sourceSemester": "2026W"
+          }
+        ],
+        "locked": false,
+        "creditApproved": null
+      }
+    ],
+    "notes": "Public ETH HS26 test case, verified 2026-11-08. Numerical Methods: first lecture week in HG G 5, subsequent weeks HG G 19.1. Exercise group selected: HG F 26.5. Admission recognition depends on the personal admission letter."
+  },
+  "interests": [
+    {
+      "id": "00e510b0-6c96-43d9-8638-712796c3a889",
+      "number": "401-4656-21L",
+      "title": "AI in the Sciences and Engineering",
+      "ects": 6,
+      "suggestedRole": "core",
+      "offerings": {
+        "2026W": 204828
+      },
+      "unitId": 204828,
+      "sourceSemester": "2026W",
+      "reviewAvailable": true
+    },
+    {
+      "id": "6458887c-88eb-4589-b4a4-c17e40812b30",
+      "number": "401-2673-00L",
+      "title": "Numerical Methods for CSE",
+      "ects": 9,
+      "suggestedRole": "requirement",
+      "offerings": {
+        "2026W": 204354
+      },
+      "unitId": 204354,
+      "sourceSemester": "2026W",
+      "reviewAvailable": true
+    }
+  ],
+  "scientificWorksBSc": false,
+  "selectedSpecialisations": [
+    "Physics",
+    "Fluid Dynamics"
+  ],
+  "history": [],
+  "plans": [
+    {
+      "id": "physics",
+      "name": "Physics Specialisation",
+      "specialisation": "Physics",
+      "semesters": [
+        "2026W",
+        "2027S",
+        "2027W",
+        "2028S"
+      ],
+      "lockedSemesters": [],
+      "courses": [],
+      "notes": ""
+    },
+    {
+      "id": "fluids",
+      "name": "Fluid Dynamics Specialisation",
+      "specialisation": "Fluid Dynamics",
+      "semesters": [
+        "2026W",
+        "2027S",
+        "2027W",
+        "2028S"
+      ],
+      "lockedSemesters": [],
+      "courses": [],
+      "notes": ""
+    }
+  ]
+}
