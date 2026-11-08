@@ -28,6 +28,28 @@ class LauncherTests(unittest.TestCase):
             self.assertNotIn("Traceback", result.stderr)
 
     @unittest.skipUnless(sys.version_info >= (3, 10), "Needs Python >=3.10")
+    def test_rejects_server_symlink_to_different_tree(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            root = base / "masterplan"
+            root.mkdir()
+            other = base / "Trash"
+            other.mkdir()
+            shutil.copyfile(ROOT / "run.sh", root / "run.sh")
+            (other / "server.py").write_text("print('wrong tree')", encoding="utf-8")
+            (root / "server.py").symlink_to(other / "server.py")
+            (root / "vvz_dump.py").write_text("", encoding="utf-8")
+            (root / "web").mkdir()
+            (root / "web" / "index.html").write_text("", encoding="utf-8")
+            (root / "guidelines").mkdir()
+            (root / "guidelines" / "cse-guidelines.json").write_text("{}", encoding="utf-8")
+            result = subprocess.run(["sh", str(root / "run.sh")], capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("server.py resolves to", result.stderr)
+            self.assertIn("symbolic link", result.stderr)
+            self.assertNotIn("wrong tree", result.stdout)
+
+    @unittest.skipUnless(sys.version_info >= (3, 10), "Needs Python >=3.10")
     def test_complete_installation_starts_from_its_own_directory(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
