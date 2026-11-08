@@ -28,7 +28,7 @@ def main():
         page.evaluate('''([state,rules])=>{
           let saved=state;
           window.fetch=async(url,opts={})=>{
-            const u=String(url),value=u.includes('/api/guidelines')?rules:u.includes('/api/state')?(opts.method==='POST'?((saved=JSON.parse(opts.body)),(saved.revision+=1),saved):saved):u.includes('/api/vvz/times')?{status:'ready',meetings:[]}:u.includes('/api/vvz/dump/')?{available:true,phase:'ready',checking:false,lastChecked:1794180000, size:12345678,maxRequestsPerMinute:2}:{results:[]};
+            const u=String(url),value=u.includes('/api/guidelines')?rules:u.includes('/api/state')?(opts.method==='POST'?((saved=JSON.parse(opts.body)),(saved.revision+=1),saved):saved):u.includes('/api/vvz/times')?{status:'ready',meetings:[]}:u.includes('/api/vvz/dump/')?{available:true,phase:'ready',checking:false,lastChecked:1794180000, size:12345678,maxRequestsPerMinute:1}:{results:[]};
             return new Response(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
           }
         }''',[data,rules])
@@ -82,7 +82,7 @@ def main():
         page.locator('[data-nav="settings"]').click()
         page.wait_for_selector('#dump-status')
         page.wait_for_function('document.querySelector("#dump-status").textContent.includes("Offline") || document.querySelector("#dump-status").textContent.includes("Lokale")')
-        assert '2' in page.locator('#app').inner_text()
+        assert 'Maximal eine externe Anfrage' in page.locator('#app').inner_text()
         page.locator('[data-action="check-dump"]').click()
         page.wait_for_timeout(100)
         assert not errors,errors

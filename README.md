@@ -12,9 +12,11 @@ A local-first, bilingual study planner for the ETH Zurich MSc Computational Scie
 sh run.sh
 ```
 
-**Windows** (Python 3.10+): double-click `run.bat`. It opens `http://127.0.0.1:8765/`. A browser-only hosted edition and standalone installers are **not yet provided**. Use `python3 server.py --no-browser --port 8765` for headless operation.
+**Windows** (Python 3.10+): double-click `run.bat`. It opens `http://127.0.0.2:8765/`. A browser-only hosted edition and standalone installers are **not yet provided**. Use `python3 server.py --no-browser --port 8765` for headless operation.
 
-**German:** `sh run.sh` starten und `http://127.0.0.1:8765/` öffnen. Keine Kommandozeile ist für die Nutzung der Weboberfläche erforderlich, wenn die App schon läuft. Für den ersten lokalen Start wird Python benötigt. Windows: `run.bat` doppelklicken.
+The default bind address is **`127.0.0.2:8765`** (as requested). If this loopback alias is unavailable on Windows/macOS, MasterPlan automatically falls back to `127.0.0.1:8765` and prints the actual URL. Override with `sh run.sh --host 127.0.0.1` when needed. Only loopback connections are supported.
+
+**German:** `sh run.sh` starten und `http://127.0.0.2:8765/` öffnen. Keine Kommandozeile ist für die Nutzung der Weboberfläche erforderlich, wenn die App schon läuft. Für den ersten lokalen Start wird Python benötigt. Windows: `run.bat` doppelklicken.
 
 ## Implemented / Umgesetzt
 
@@ -22,7 +24,7 @@ sh run.sh
 - Named study scenarios: create, duplicate, switch, rename, delete, compare, per-plan semester columns.
 - Local course records, manual events with building/floor/room, time clash detection and shared completed-course history.
 - Course/semester locks, interest-only courses (always **0 credited ECTS**), preliminary credit categories.
-- **Offline-first VVZ dump**: one complete SQLite database snapshot (ZIP) is downloaded on first start, stored under a gitignored cache directory, and reused across restarts for course search, details, exercise groups and timetable slots. Same-season historical proxies and all existing programme/category filters remain available. Upstream calls are globally limited to **two requests per minute**.
+- **Offline-first VVZ dump**: one complete SQLite database snapshot (ZIP) is downloaded on first start, stored under a gitignored cache directory, and reused across restarts for course search, details, exercise groups and timetable slots. Same-season historical proxies and all existing programme/category filters remain available. Upstream calls are globally limited to **one request per minute**.
 - Separate grade page with a password-encrypted `grades.enc` (AES-GCM via browser WebCrypto; PBKDF2 250,000 iterations), component-weighted estimates. No grades outside that page.
 - Minimal local JSON, atomic revisions, independent encrypted grade storage, JSON plan export/import, portable data folder (can be inside a cloud-sync folder). Open/move folders through Settings.
 - Configurable guideline JSON + schema for a future external extraction agent. Includes starter study-progress indicators, not full curriculum adjudication.
@@ -44,7 +46,7 @@ sh run.sh
 - **Specialisation filters**: selected specialisations narrow VVZ section-path search; empty selection yields no specialisation results. Eligible ETH MSc core-course programmes can be searched as potentially creditable CSE electives, subject to individual recognition.
 - **Required Study Achievements** on actual dashboard and per scenario: 120 total; 74 main-area credits; two core courses ≥12 ECTS; four specialisation lectures and one seminar ≥18 ECTS; two electives ≥12 ECTS; two case studies (3 ECTS each); term project 8; SiP 2; thesis 30; Scientific Works prerequisite at Bachelor/Master level, and separately selected admission conditions. Core Courses **Advanced Machine Learning** and **Probabilistic Artificial Intelligence** may not both count as cores. Figures are provisional because individual regulations and actual credit approval must be checked.
 - **Graduation grade formula** from MSc-CSE Guidelines §3.3 (p. 10): `(2*core1 + 2*core2 + SUM(four specialisation lecture grades) + SUM(all included elective grades) + 4*thesis_grade) / (12 + number_of_included_electives)`. Each module's internal component grades may first be averaged by its own assessment weights. Grade values never appear outside the private grade page.
-- **Actual VVZ timetable** / **Termine aus VVZAPI**: `/api/v1/course/get/{id}` gives real weekday/start/end/building/floor/room, and `/api/v1/unit/{id}/get` includes exercise groups. They are read locally from the installed VVZ dump (or fetched through the shared two-per-minute API fallback while the dump is missing), with selectable timeslots and room data; API source/link, historic proxy flag, and optional CourseReview link appear on linked modules. No synthetic times are inserted into personal data.
+- **Actual VVZ timetable** / **Termine aus VVZAPI**: `/api/v1/course/get/{id}` gives real weekday/start/end/building/floor/room, and `/api/v1/unit/{id}/get` includes exercise groups. They are read locally from the installed VVZ dump (or fetched through the shared one-per-minute API fallback while the dump is missing), with selectable timeslots and room data; API source/link, historic proxy flag, and optional CourseReview link appear on linked modules. No synthetic times are inserted into personal data.
 - **Course links** / **Verlinkungen**: direct official ETH VVZ for an identified learning unit, or official VVZ number search as fallback; CourseReview links appear only if VVZAPI reports a CourseReview rating. CourseReview is not affiliated with ETH.
 
 Run the optional browser UI regression test with `python3 tests/browser_smoke.py` (developer dependency Playwright/Chromium only). It uses mocked local responses and synthetic course data; no personal data or live API traffic.
@@ -65,7 +67,7 @@ Default: `./user-data/masterplan.json` and (only if grades are saved) `./user-da
 2. The ZIP is checked for expected size, SQLite format, required schema and `PRAGMA quick_check`. Only after a successful validation does an atomic replacement make the new snapshot active. A corrupt or failed download leaves the previously working snapshot usable.
 3. Course catalogue searches, MSc CSE / RW Bachelor / other programme filters, category/section filters, semester and historical-proxy choices, learning-unit details and real lecture/exercise-group timeslots are then queried **locally** using SQLite. No VVZ HTTP requests are needed during normal browsing.
 4. The app checks **only metadata** at most once every **24 hours** (and on explicit user request in Settings → Offline VVZ catalogue). If size *and* last modification timestamp are unchanged, the ZIP is **not downloaded again**. Metadata is persisted, so this also survives server restarts. Offline searches remain available while a new snapshot is being downloaded.
-5. A single server-wide limiter covers metadata, ZIP downloads and the temporary online fallback: **maximum two requests per minute**, implemented as one reservation every 30 seconds. This is separate from the VVZ dump endpoint's own 2/minute cap. The initial download may therefore start 30 seconds after its metadata request. If the dump is unavailable, the previous on-demand VVZ API fallback remains available, but is also throttled.
+5. A single server-wide limiter covers metadata, ZIP downloads and the temporary online fallback: **maximum one request per minute**, implemented as one reservation every 60 seconds. The VVZ dump endpoint itself permits up to 2/minute; MasterPlan deliberately stays below that limit. The initial download may therefore start 60 seconds after its metadata request. If the dump is unavailable, the previous on-demand VVZ API fallback remains available, but is also throttled.
 
 **Persistence / Speicherort:** Default `.cache/vvz/database.sqlite` and `.cache/vvz/metadata.json` in the app directory; override with `MASTERPLAN_CACHE_DIR=/your/cache/folder`. This cache is disposable and **is never copied into `MASTERPLAN_DATA_DIR`** (your personal portable/cloud-sync folder). It is covered by `.gitignore`, along with temporary ZIPs and local SQLite files. All actual study plans and encrypted grades are stored separately.
 
@@ -124,3 +126,9 @@ The catalogue includes **“MSc Core Courses → CSE Electives”** with a one-c
 A filtered course is **potentially eligible without prior approval**, not guaranteed to be credited: exclusions such as previous Bachelor credit use, category duplication, personal study regulations, and current VVZ classifications still apply. The study planner does not submit ETH credit requests. / Ein Treffer bedeutet **grundsätzlich ohne vorgängige Bewilligung wählbar**, nicht automatisch angerechnet. Vorherige Bachelor-Anrechnung, Doppelzählungen, persönliche Reglementsfassung und aktuelle VVZ-Einstufung müssen geprüft werden.
 
 The **Study plans → Semester vs. semester** view allows comparing any two semesters from the same or different plans side by side, including common/unique modules, category/ECTS/status differences, locked and extra courses. This UI-only selection does not increase the saved study-plan file size. / Unter **Studienpläne → Semester vs. Semester** können zwei beliebige Semester aus gleichen oder unterschiedlichen Plänen modulweise verglichen werden.
+
+### Offline VVZ catalogue / Lokaler VVZ-Katalog
+
+![Offline catalogue status and update check (synthetic demo)](docs/screenshots/08-offline-catalog.jpg)
+
+The screenshot uses mocked, non-personal data. The UI reports whether the local SQLite dump is available and allows an explicit metadata check without downloading an unchanged archive.

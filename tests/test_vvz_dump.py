@@ -164,7 +164,7 @@ class TestVvzDump(unittest.TestCase):
         try:
             status=fetch('/api/vvz/dump/status')
             self.assertTrue(status['available'])
-            self.assertEqual(status['maxRequestsPerMinute'],2)
+            self.assertEqual(status['maxRequestsPerMinute'],1)
             query=fetch('/api/vvz/search?programme=cse&category=core&semester=2026W')
             self.assertEqual(query['source'],'local-dump')
             self.assertEqual(query['results'][0]['number'],'401-0000-00L')
@@ -197,13 +197,13 @@ class TestVvzDump(unittest.TestCase):
         with self.assertRaises(ValueError):
             install_zip(bad,self.local)
 
-    def test_rate_is_two_requests_per_minute_shared_by_api_and_dump(self):
-        gate=UpstreamRateLimit(interval=30)
+    def test_rate_is_one_request_per_minute_shared_by_api_and_dump(self):
+        gate=UpstreamRateLimit(interval=60)
         gate.acquire()
         with self.assertRaisesRegex(RuntimeError,'VVZ rate limit'):
             gate.acquire()
         # Simulate the same gate being used by a normal endpoint and dump client.
-        gate.last_request-=30.01
+        gate.last_request-=60.01
         gate.acquire()
         with self.assertRaises(RuntimeError):
             gate.acquire()

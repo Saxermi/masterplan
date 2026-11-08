@@ -277,11 +277,11 @@ class Store:
 
 
 class UpstreamRateLimit:
-    """One shared reservation every 30 seconds: at most two VVZAPI requests/minute.
+    """One shared reservation every 60 seconds: at most one VVZAPI request/minute.
 
     Metadata checks, whole database ZIPs and live fallback calls share this gate.
     """
-    def __init__(self, interval=30.0):
+    def __init__(self, interval=60.0):
         self.lock = threading.RLock()
         self.interval = interval
         self.last_request = 0.0
@@ -486,7 +486,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def allowed_host(self):
         host = self.headers.get("Host", "").split(":")[0].lower()
-        return host in ("localhost", "127.0.0.1", "[::1]")
+        return host in ("localhost", "127.0.0.1", "127.0.0.2", "[::1]")
 
     def get_json(self):
         length = int(self.headers.get("Content-Length", "0"))
@@ -629,7 +629,9 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed_host():
             return self.respond(403, {"error": "Local access only"})
         origin = self.headers.get("Origin")
-        if origin and origin not in (f"http://localhost:{self.server.server_port}", f"http://127.0.0.1:{self.server.server_port}"):
+        if origin and origin not in (f"http://localhost:{self.server.server_port}",
+                                     f"http://127.0.0.1:{self.server.server_port}",
+                                     f"http://127.0.0.2:{self.server.server_port}"):
             return self.respond(403, {"error": "Cross-origin writes are blocked"})
         path = urlsplit(self.path).path
         if path == "/api/vvz/dump/check":
@@ -670,9 +672,20 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description="MasterPlan study planner")
     parser.add_argument("--port", type=int, default=int(os.environ.get("MASTERPLAN_PORT", "8765")))
+    parser.add_argument("--host", default=os.environ.get("MASTERPLAN_HOST", "127.0.0.2"),
+                        choices=("127.0.0.1", "127.0.0.2"), help="Local loopback address")
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    try:
+        server = ThreadingHTTPServer((args.host, args.port), Handler)
+        bound_host = args.host
+    except OSError:
+        if args.host != "127.0.0.2":
+            raise
+        # Some Windows/macOS installations do not assign other loopback aliases.
+        bound_host = "127.0.0.1"
+        server = ThreadingHTTPServer((bound_host, args.port), Handler)
+        print("127.0.0.2 unavailable on this OS; using 127.0.0.1 instead.", flush=True)
     server.store = Store()
     # The catalogue lives OUTSIDE the personal sync folder, so it can be
     # re-downloaded and is never backed up with private plans or grades.
@@ -682,7 +695,7 @@ def main():
                                   ELIGIBLE_CORE_PROGRAMMES, SPECIALISATIONS)
     server.vvz_dump = VvzDump(cache_root, server.vvz, server.catalog)
     server.vvz_dump.check()  # async; never delays opening the local browser
-    url = f"http://127.0.0.1:{args.port}/"
+    url = f"http://{bound_host}:{args.port}/"
     print(f"MasterPlan: {url}\nData: {server.store.folder}\nCtrl+C to stop", flush=True)
     if not args.no_browser:
         import webbrowser

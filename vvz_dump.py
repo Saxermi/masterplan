@@ -241,7 +241,7 @@ class VvzDump:
             return {"available": self.catalog.available(), "phase": self.phase, "checking": self.running,
                     "lastChecked": self.metadata.get("lastChecked", 0), "lastUpdated": self.metadata.get("lastUpdated", 0),
                     "size": self.catalog.filename.stat().st_size if self.catalog.available() else 0,
-                    "error": self.error, "maxRequestsPerMinute": 2, "checkIntervalHours": CHECK_INTERVAL_SECONDS // 3600,
+                    "error": self.error, "maxRequestsPerMinute": 1, "checkIntervalHours": CHECK_INTERVAL_SECONDS // 3600,
                     "storage": str(self.directory)}
 
     def check(self, force=False):
