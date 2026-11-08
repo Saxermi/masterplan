@@ -30,7 +30,8 @@
     },
     {
       "id": "case",
-      "minEcts": 6
+      "minEcts": 6,
+      "minCourses": 2
     },
     {
       "id": "project",
@@ -47,6 +48,12 @@
     {
       "id": "total",
       "minEcts": 120
+    },
+    {
+      "id": "scientific",
+      "minEcts": 0,
+      "minCourses": 1,
+      "notice": "Scientific Works in Mathematics or Physics must be completed at BSc or MSc level; do not count ECTS twice."
     }
   ],
   "gradeWeights": {
@@ -79,5 +86,30 @@
       "No double counting and subject to applicable personal regulations."
     ],
     "notice": "Eligibility category only. Do not automatically mark any course as approved or completed."
-  }
+  },
+  "gradeFormula": {
+    "coreCourseCount": 2,
+    "specialisationLectureCount": 4,
+    "electiveMinimumCount": 2,
+    "masterThesisCount": 1,
+    "excludedCategories": [
+      "case",
+      "project",
+      "sip",
+      "scientific",
+      "extra",
+      "requirement"
+    ],
+    "note": "Weight each of two core grades 2, each of four specialization lecture grades 1, each elective grade 1, and the thesis grade 4; divide by 12 plus the number of electives. Do not ECTS-weight graduation grades. Seminar and case studies do not enter this grade formula. Source guidelines Section 3.3, printed page 10."
+  },
+  "coreExclusions": [
+    {
+      "numbers": [
+        "252-0535-00L",
+        "263-5210-00L"
+      ],
+      "maxCoreCreditsCourses": 1,
+      "note": "Advanced Machine Learning and Probabilistic Artificial Intelligence cannot both be recognised as MSc CSE Core Courses; the other may be used in another permitted category. Guidelines Section 3.4, printed page 11."
+    }
+  ]
 }
