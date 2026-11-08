@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import copy
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import hashlib
 import json
 import os
@@ -23,7 +25,8 @@ DEFAULT_DATA = Path(os.environ.get("MASTERPLAN_DATA_DIR", str(BASE / "user-data"
 MAX_BODY = 2 * 1024 * 1024
 CATALOG_BASE = "https://vvzapi.ch"
 DEGREES = {
-    "cse": "computational science and engineering",
+    "cse": "computational science and engineering master",
+    "cse-bsc": "computational science and engineering bachelor",
     "mathematics-bsc": "mathematics bachelor",
     "mathematics-msc": "mathematics master",
     "physics-bsc": "physics bachelor",
@@ -50,46 +53,94 @@ ELIGIBLE_CORE_PROGRAMMES = frozenset(json.loads(
 ).get("electiveEligibility", {}).get("coreCourseProgrammeKeys", []))
 
 
-def build_catalog_query(query, programme, category):
-    """Return a VVZAPI offered-section query, rejecting unsupported eligibility claims."""
+# Section names are part of ETH VVZ paths, not the course title. Use OR for
+# different historical naming conventions, then filter the offered semesters.
+SPECIALISATIONS = frozenset(("Astrophysics", "Biology", "Chemistry", "Computational Finance", "Electromagnetics", "Fluid Dynamics", "Geophysics", "Physics", "Physics of the Atmosphere", "Robotics", "Systems and Control"))
+
+CATEGORY_PATHS = {
+    "core": ["core courses"],
+    "elective": ["electives"],
+    "specialisation": ["field of specialization", "fields of specialization", "specialisation"],
+    "case": ["case studies"],
+    "project": ["semester project", "term project", "semester thesis"],
+    "sip": ["science in perspective"],
+    "thesis": ["master thesis"],
+    "scientific": ["scientific works"],
+    "requirement": [],  # Admission requirements are personal, not a VVZ category.
+}
+
+
+def recent_semesters(now=None):
+    """Last two + current + next ETH semesters, Europe/Zurich."""
+    now = now or datetime.now(ZoneInfo("Europe/Zurich"))
+    year, month = now.year, now.month
+    current = f"{year if month >= 2 else year - 1}{'W' if month >= 9 or month == 1 else 'S'}"
+    terms = []
+    for y in range(year - 3, year + 3):
+        terms.extend([f"{y}S", f"{y}W"])
+    i = terms.index(current)
+    return terms[i - 2:i + 2]
+
+
+def build_catalog_query(query, programme, category, specialisations=None):
+    """VVZAPI query restricted to official programme section paths."""
     if programme not in DEGREES:
         raise ValueError("Unknown programme")
-    if category not in ("", "core", "elective", "eligible-core"):
+    if category not in ("", "eligible-core", *CATEGORY_PATHS):
         raise ValueError("Unknown course category")
-    clean = query.strip()[:120].replace('"', '')
+    clean = query.strip()[:120].replace('"', '').replace('`', '')
     if category == "eligible-core":
         if programme == "eligible-core-all":
-            # A module can appear in multiple programmes: VVZ compact search
-            # groups by course number and naturally deduplicates these results.
             distinct_paths = sorted({DEGREES[p] for p in ELIGIBLE_CORE_PROGRAMMES})
-            clauses = [f'(o:"{p}" o:"core courses")' for p in distinct_paths]
-            course_query = "(" + " OR ".join(clauses) + ")"
+            clause = "(" + " OR ".join(f'(o:"{p}" o:"core courses")' for p in distinct_paths) + ")"
         elif programme in ELIGIBLE_CORE_PROGRAMMES:
-            course_query = f'o:"{DEGREES[programme]}" o:"core courses"'
+            clause = f'o:"{DEGREES[programme]}" o:"core courses"'
         else:
             raise ValueError("Select an eligible MSc programme for CSE core-course electives")
-        return " ".join([course_query, f'title:"{clean}"' if clean else ""]).strip()
+        field = "number" if re.match(r"^\d{3}-[0-9A-Za-z-]+$", clean) else "title"
+        return " ".join([clause, f'{field}:"{clean}"' if clean else ""]).strip()
     if programme == "eligible-core-all":
         raise ValueError("Choose the CSE-elective core-course category")
-    clauses = []
-    if DEGREES[programme]:
-        clauses.append(f'o:"{DEGREES[programme]}"')
-    if category in ("core", "elective"):
-        clauses.append(f'o:"{"core courses" if category == "core" else "electives"}"')
+    # Entry requirements from an admission letter are generally RW/CSE BSc units.
+    # Do not claim that *all* BSc units are individual admission requirements.
+    degree = DEGREES["cse-bsc"] if programme == "cse" and category == "requirement" else DEGREES[programme]
+    clause = f'o:"{degree}"' if degree else ""
+    paths = CATEGORY_PATHS.get(category, [])
+    if paths:
+        path_filter = "(" + " OR ".join(f'o:"{part}"' for part in paths) + ")" if len(paths) > 1 else f'o:"{paths[0]}"'
+        clause = f"{clause} {path_filter}".strip()
     if clean:
-        clauses.append(f'title:"{clean}"')
-    if not clauses:
-        raise ValueError("Provide a search term or select a programme")
-    return " ".join(clauses)
+        field = "number" if re.match(r"^\d{3}-[0-9A-Za-z-]+$", clean) else "title"
+        clause = f'{clause} {field}:"{clean}"'.strip()
+    if category == "specialisation" and specialisations:
+        selected = list(dict.fromkeys(specialisations))
+        if any(x not in SPECIALISATIONS for x in selected):
+            raise ValueError("Unknown specialisation")
+        if len(selected) > len(SPECIALISATIONS):
+            raise ValueError("Too many specialisations")
+        selection = " OR ".join(f'o:"{x.lower()}"' for x in selected)
+        clause = f'{clause} ({selection})'.strip()
+    if not clause:
+        raise ValueError("Provide a search term or choose a programme")
+    return clause
+
+
+def default_actual():
+    return {"id": "actual", "name": "Mein tatsächliches Studium", "specialisation": "",
+            "semesters": ["2026W", "2027S", "2027W", "2028S"],
+            "lockedSemesters": [], "courses": [], "notes": ""}
 
 
 def initial_state():
     return {
-        "schema": 1,
+        "schema": 2,
         "revision": 0,
         "language": "de",
         "theme": "light",
-        "activePlan": "physics",
+        "activePlan": "actual",
+        "actualPlan": default_actual(),
+        "interests": [],
+        "scientificWorksBSc": False,
         "selectedSpecialisations": ["Physics", "Fluid Dynamics"],
         "history": [],
         "plans": [
@@ -99,32 +150,54 @@ def initial_state():
     }
 
 
+def migrate_state(x):
+    """Backward-compatible, non-destructive schema-v1 upgrade; scenarios stay scenarios."""
+    if not isinstance(x, dict):
+        raise ValueError("Invalid state")
+    if x.get("schema") == 1:
+        x = copy.deepcopy(x)
+        x["schema"] = 2
+        x["actualPlan"] = default_actual()
+        x["activePlan"] = "actual"
+        x["interests"] = []
+        x["scientificWorksBSc"] = False
+    return x
+
+
 def valid_state(x):
-    if not isinstance(x, dict) or x.get("schema") != 1 or not isinstance(x.get("plans"), list):
+    if not isinstance(x, dict) or x.get("schema") != 2 or not isinstance(x.get("plans"), list):
         return False
-    if any("grade" in str(k).lower() or "notevalue" in str(k).lower() for k in x) or len(x["plans"]) > 100 or not isinstance(x.get("history"), list):
+    if any("grade" in str(k).lower() or "notevalue" in str(k).lower() for k in x):
         return False
-    if x.get("language") not in ("de", "en") or x.get("theme") not in ("light", "dark"):
+    if len(x["plans"]) > 100 or not isinstance(x.get("history"), list) or not isinstance(x.get("interests"), list) or len(x["interests"]) > 500:
         return False
+    if x.get("language") not in ("de", "en") or x.get("theme") not in ("light", "dark") or not isinstance(x.get("scientificWorksBSc"), bool):
+        return False
+    for interest in x["interests"]:
+        if not isinstance(interest, dict) or not isinstance(interest.get("id"), str) or len(str(interest.get("title", ""))) > 250:
+            return False
+    plans = [x.get("actualPlan")] + x["plans"]
     ids = set()
-    for plan in x["plans"]:
-        if not isinstance(plan, dict) or not isinstance(plan.get("id"), str) or len(plan.get("name", "")) > 150:
+    for pl in plans:
+        if not isinstance(pl, dict) or not isinstance(pl.get("id"), str) or not isinstance(pl.get("name"), str) or len(pl["name"]) > 150:
             return False
-        if plan["id"] in ids or not isinstance(plan.get("courses"), list) or not isinstance(plan.get("semesters"), list):
+        if pl["id"] in ids or not isinstance(pl.get("courses"), list) or not isinstance(pl.get("semesters"), list) or not isinstance(pl.get("lockedSemesters"), list):
             return False
-        if any("grade" in str(k).lower() for k in plan):
+        if any("grade" in str(k).lower() for k in pl):
             return False
-        ids.add(plan["id"])
-        if len(plan["courses"]) > 300 or len(plan["semesters"]) > 30:
+        ids.add(pl["id"])
+        if len(pl["courses"]) > 300 or len(pl["semesters"]) > 30:
             return False
-        for course in plan["courses"]:
+        if any(not isinstance(s, str) or not re.fullmatch(r"\d{4}[SW]", s) for s in pl["semesters"]):
+            return False
+        for course in pl["courses"]:
             if not isinstance(course, dict) or not isinstance(course.get("id"), str) or not isinstance(course.get("semester"), str):
                 return False
             if any("grade" in str(k).lower() for k in course):
                 return False
-            if course.get("role", "extra") not in ("core", "specialisation", "elective", "case", "project", "sip", "thesis", "extra", "requirement"):
+            if course.get("role", "extra") not in (*CATEGORY_PATHS, "extra", "eligible-core"):
                 return False
-    return True
+    return x.get("activePlan") in ids
 
 
 class Store:
@@ -154,7 +227,14 @@ class Store:
 
     def get(self):
         with self.lock:
-            return json.loads((self.folder / "masterplan.json").read_text(encoding="utf-8"))
+            file = self.folder / "masterplan.json"
+            raw = json.loads(file.read_text(encoding="utf-8"))
+            new = migrate_state(raw)
+            if new is not raw:
+                if not valid_state(new):
+                    raise ValueError("Invalid legacy study data")
+                self._atomic(file, new)
+            return new
 
     def save(self, incoming):
         with self.lock:
@@ -189,7 +269,7 @@ class Store:
         with self.lock:
             target = Path(requested).expanduser().resolve()
             state_file = target / "masterplan.json"
-            if not state_file.is_file() or not valid_state(json.loads(state_file.read_text(encoding="utf-8"))):
+            if not state_file.is_file() or not valid_state(migrate_state(json.loads(state_file.read_text(encoding="utf-8")))):
                 raise ValueError("No valid MasterPlan data in selected folder")
             self.folder = target
             return str(target)
@@ -202,6 +282,10 @@ class VvzCache:
         self.lock = threading.RLock()
         self.last_request = 0.0
         self.cache = {}
+        self.pending = []
+        self.processing = None
+        self.failures = {}
+        self.worker_running = False
         self.folder = Path(folder)
 
     def get(self, url):
@@ -227,6 +311,9 @@ class VvzCache:
                     if not isinstance(result, (dict, list)):
                         raise ValueError("Unexpected upstream response")
                     self.cache[url] = (now, result)
+                    if len(self.cache) > 450:
+                        oldest = min(self.cache, key=lambda k: self.cache[k][0])
+                        self.cache.pop(oldest, None)
                     return result, "live"
             except (HTTPError, URLError, ValueError, TimeoutError) as exc:
                 if entry:
@@ -234,15 +321,112 @@ class VvzCache:
                 raise RuntimeError(f"VVZ unavailable: {exc}") from exc
 
 
+    def scheduled(self, url):
+        """Nonblocking lookup. Queue uncached URLs for a *single* rate-limited worker.
+
+        Opening ten course cards does not generate ten immediate upstream requests.
+        """
+        with self.lock:
+            cached = self.cache.get(url)
+            if cached:
+                if time.monotonic() - cached[0] >= 1800 and url not in self.pending and self.processing != url:
+                    if len(self.pending) < 100:
+                        self.pending.append(url)
+                        if not self.worker_running:
+                            self.worker_running = True
+                            threading.Thread(target=self._run_queue, daemon=True, name="masterplan-vvz-queue").start()
+                return cached[1], "ready", "cached"
+            if url in self.failures:
+                return None, "failed", self.failures[url]
+            if url not in self.pending and self.processing != url:
+                if len(self.pending) >= 100:
+                    return None, "failed", "VVZ request queue full"
+                self.pending.append(url)
+            if not self.worker_running:
+                self.worker_running = True
+                threading.Thread(target=self._run_queue, daemon=True, name="masterplan-vvz-queue").start()
+            return None, "queued", "pending"
+
+    def _run_queue(self):
+        while True:
+            with self.lock:
+                if not self.pending:
+                    self.processing = None
+                    self.worker_running = False
+                    return
+                url = self.pending.pop(0)
+                self.processing = url
+            while True:
+                with self.lock:
+                    delay = 60.0 - (time.monotonic() - self.last_request)
+                if delay <= 0:
+                    break
+                time.sleep(min(delay, 5))
+            try:
+                self.get(url)
+            except RuntimeError as exc:
+                if str(exc).startswith("VVZ rate limit"):
+                    with self.lock:
+                        self.pending.insert(0, url)
+                    time.sleep(2)
+                else:
+                    with self.lock:
+                        self.failures[url] = str(exc)
+            finally:
+                with self.lock:
+                    self.processing = None
+
+
+def normalize_meetings(courses):
+    """Extract real weekly VVZ course slots. Keep source flags and avoid made-up times.
+
+    VVZAPI: GET /api/v1/course/get/{unit_id}, Course.timeslots = TimeSlot[];
+    TimeSlot has weekday 0..6, start_time/end_time, building/floor/room,
+    date, first_half_semester, second_half_semester and biweekly.
+    """
+    if not isinstance(courses, list):
+        raise ValueError("Invalid VVZ timetable response")
+    normalized = []
+    for course in courses:
+        if not isinstance(course, dict):
+            continue
+        label = str(course.get("title") or course.get("number") or "Course")[:140]
+        course_number = str(course.get("number") or "")[:50]
+        for slot in (course.get("timeslots") or []):
+            if not isinstance(slot, dict):
+                continue
+            try:
+                day = int(slot.get("weekday"))
+            except (ValueError, TypeError):
+                continue
+            start, end = slot.get("start_time"), slot.get("end_time")
+            if not (0 <= day <= 6 and isinstance(start, str) and isinstance(end, str)
+                    and re.fullmatch(r"[0-2]\d:[0-5]\d", start)
+                    and re.fullmatch(r"[0-2]\d:[0-5]\d", end) and start < end):
+                continue
+            room = {k: str(slot.get(k) or "")[:100] for k in ("building", "floor", "room")}
+            item = {"day": day, "start": start, "end": end, **room,
+                    "label": label, "courseNumber": course_number,
+                    "date": str(slot.get("date") or "")[:24],
+                    "biweekly": bool(slot.get("biweekly")),
+                    "firstHalf": bool(slot.get("first_half_semester")),
+                    "secondHalf": bool(slot.get("second_half_semester"))}
+            # Stable slot identity ensures previously selected slots can be retained.
+            item["slotKey"] = hashlib.sha256(json.dumps(item, sort_keys=True).encode()).hexdigest()[:20]
+            normalized.append(item)
+    return normalized
+
+
 def sem_label(code):
     return ("FS " if code.endswith("S") else "HS ") + code[:4]
 
 
-def select_offering(semesters, wanted):
+def select_offering(semesters, wanted, cutoff=None):
     """Prefer exact semester; otherwise use closest previous same-season offering."""
     if wanted in semesters:
         return {"unit_id": semesters[wanted], "source_semester": wanted, "proxy": False}
-    earlier = [s for s in semesters if re.fullmatch(r"\d{4}[SW]", s) and s.endswith(wanted[-1]) and s < wanted]
+    cutoff = cutoff or recent_semesters()[0]
+    earlier = [s for s in semesters if re.fullmatch(r"\d{4}[SW]", s) and s.endswith(wanted[-1]) and s < wanted and s >= cutoff]
     if not earlier:
         return {"unit_id": None, "source_semester": None, "proxy": False}
     source = max(earlier)
@@ -273,7 +457,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def allowed_host(self):
         host = self.headers.get("Host", "").split(":")[0].lower()
-        return host in ("localhost", "127.0.0.2", "[::1]")
+        return host in ("localhost", "127.0.0.1", "[::1]")
 
     def get_json(self):
         length = int(self.headers.get("Content-Length", "0"))
@@ -305,12 +489,16 @@ class Handler(BaseHTTPRequestHandler):
                 programme = params.get("programme", ["cse"])[0]
                 category = params.get("category", [""])[0]
                 semester = params.get("semester", [""])[0]
-                vvz_query = build_catalog_query(query, programme, category)
-                if re.fullmatch(r"\d{4}[SW]", semester):
-                    # Keep all offerings, because a previous same-season one might be used as proxy.
-                    pass
+                selected_specs = [x for x in params.get("spec", [""])[0].split("|") if x]
+                vvz_query = build_catalog_query(query, programme, category, selected_specs)
+                if semester != "recent" and not re.fullmatch(r"\d{4}[SW]", semester):
+                    raise ValueError("Invalid semester")
                 limit = min(60, max(1, int(params.get("limit", ["40"])[0])))
                 offset = max(0, min(10000, int(params.get("offset", ["0"])[0])))
+                window = recent_semesters()
+                # Filter out old-only course numbers on the server; the target can
+                # still be a future semester with a recent same-season proxy.
+                vvz_query += f" year>={window[0][:4]}"
                 url = CATALOG_BASE + "/api/v0/search/compact?" + urlencode({"q": vvz_query, "offset": offset, "limit": limit, "order_by": "title", "order": "asc"})
                 data, source = self.server.vvz.get(url)
                 if not isinstance(data, dict) or not isinstance(data.get("results"), list):
@@ -319,11 +507,23 @@ class Handler(BaseHTTPRequestHandler):
                 for row in data["results"]:
                     if not isinstance(row, dict):
                         continue
-                    item = {k: row.get(k) for k in ("number", "title", "title_english", "credits", "semesters", "levels", "language")}
-                    if re.fullmatch(r"\d{4}[SW]", semester):
-                        item["offering"] = select_offering(row.get("semesters") or {}, semester)
+                    item = {k: row.get(k) for k in ("number", "title", "title_english", "credits", "semesters", "levels", "language", "rating")}
+                    known = row.get("semesters") or {}
+                    if not isinstance(known, dict) or not any(v >= window[0] and re.fullmatch(r"\d{4}[SW]", v) for v in known):
+                        continue
+                    if semester == "recent":
+                        for target in window:
+                            if target in known:
+                                item["offering"] = select_offering(known, target, window[0])
+                                break
+                        else:
+                            continue
+                    else:
+                        item["offering"] = select_offering(known, semester, window[0])
+                        if not item["offering"]["unit_id"]:
+                            continue
                     results.append(item)
-                return self.respond(200, {"results": results, "total": data.get("total"), "source": source, "query": vvz_query, "eligibleCoreElective": category == "eligible-core"})
+                return self.respond(200, {"results": results, "total": len(results), "upstreamTotal": data.get("total"), "source": source, "query": vvz_query, "recentSemesters": window, "eligibleCoreElective": category == "eligible-core"})
             except (RuntimeError, ValueError, TypeError) as exc:
                 return self.respond(503, {"error": str(exc)})
         if path.startswith("/api/vvz/unit/"):
@@ -340,8 +540,22 @@ class Handler(BaseHTTPRequestHandler):
                 unit_id = int(path.rsplit("/", 1)[-1])
                 if not 1 <= unit_id <= 1_000_000_000:
                     raise ValueError("Invalid unit id")
-                data, source = self.server.vvz.get(f"{CATALOG_BASE}/api/v1/course/get/{unit_id}")
-                return self.respond(200, {"courses": data, "source": source})
+                data, status, source = self.server.vvz.scheduled(f"{CATALOG_BASE}/api/v1/course/get/{unit_id}")
+                # Groups (e.g. exercise sections) live on the LearningUnit model,
+                # not always in Course.timeslots. The second request is queued,
+                # never made immediately if a minute has not elapsed.
+                unit, group_status, _ = self.server.vvz.scheduled(f"{CATALOG_BASE}/api/v1/unit/{unit_id}/get")
+                meetings = normalize_meetings(data) if status == "ready" else []
+                if group_status == "ready" and isinstance(unit, dict):
+                    groups = []
+                    for group in unit.get("groups", []):
+                        if isinstance(group, dict):
+                            groups.append({"title": "Group: " + str(group.get("name") or "Exercise"),
+                                           "number": str(group.get("number") or ""),
+                                           "timeslots": group.get("timeslots") or []})
+                    meetings.extend(normalize_meetings(groups))
+                return self.respond(200, {"status": status, "groupStatus": group_status,
+                                          "meetings": meetings, "source": source})
             except (RuntimeError, ValueError) as exc:
                 return self.respond(503, {"error": str(exc)})
         if path == "/" or path in ("/index.html", "/app.js", "/styles.css", "/manifest.webmanifest", "/icon.svg"):
@@ -363,7 +577,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed_host():
             return self.respond(403, {"error": "Local access only"})
         origin = self.headers.get("Origin")
-        if origin and origin not in (f"http://localhost:{self.server.server_port}", f"http://127.0.0.2:{self.server.server_port}"):
+        if origin and origin not in (f"http://localhost:{self.server.server_port}", f"http://127.0.0.1:{self.server.server_port}"):
             return self.respond(403, {"error": "Cross-origin writes are blocked"})
         path = urlsplit(self.path).path
         try:
@@ -388,6 +602,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("Select move or open")
                 return self.respond(200, {"folder": folder, "state": self.server.store.get()})
             if path == "/api/import":
+                body = migrate_state(body)
                 if not valid_state(body):
                     raise ValueError("Invalid imported data")
                 old = self.server.store.get()
@@ -403,10 +618,10 @@ def main():
     parser.add_argument("--port", type=int, default=int(os.environ.get("MASTERPLAN_PORT", "8765")))
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
-    server = ThreadingHTTPServer(("127.0.0.2", args.port), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.store = Store()
     server.vvz = VvzCache(server.store.folder)
-    url = f"http://127.0.0.2:{args.port}/"
+    url = f"http://127.0.0.1:{args.port}/"
     print(f"MasterPlan: {url}\nData: {server.store.folder}\nCtrl+C to stop", flush=True)
     if not args.no_browser:
         import webbrowser

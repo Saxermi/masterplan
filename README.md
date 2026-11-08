@@ -30,10 +30,28 @@ sh run.sh
 ## Not yet implemented / Noch offen
 
 - Validated autonomous PDF-guidelines extraction/approval pipeline, full legal applicability and admission checks, exact seminar validation and final official graduation grade.
-- Reliable auto-population of all actual VVZ meeting times and groups (manual times work); automatic comprehensive changeset notifications to linked modules.
+- Complete event reconciliation and automatic updates of previously chosen personal slots remain conservative: VVZ schedule changes are flagged, but never silently overwrite selected or manual slots. Some by-appointment or date-specific events have no weekly slot and must be handled manually.
 - Cloud merge/conflict resolution between two simultaneous editing devices. **Do not edit the same cloud-synced folder from two computers at once**; sync fully before switching.
 - Cloud-hosted deployment, automatic desktop installers, production accounts and hosted multi-user security. This server is **local loopback only**.
 - Comprehensive unit/integration/browser test suites and continuous release/distribution.
+
+
+## Feedback revision (November 2026) / Überarbeitung
+
+- **Real study progress vs scenarios** / **Tatsächlicher Verlauf vs Szenarien**: dashboard and top semester board now show actual progress, while named hypothetical specialisation scenarios are separate below; the former is never overwritten when switching scenario.
+- **Shortlist first** / **Erst Merkliste**: catalogue results can be shortlisted, then assigned from a dropdown in Semester planning. Assigned courses can be unselected without deleting their shortlist entry. The timetable add-event form selects only courses already assigned to its semester.
+- **Study programme/category/term filters**: MSc CSE is default, and its official section path is distinct from the RW/CSE Bachelor; category filters support Core Courses, Electives, specialisations, case studies, semester projects, Science in Perspective, master thesis and Scientific Works (zero credits). Separate RW Bachelor admission requirements are tracked **outside** MSc ECTS. The default recent-term window is previous two / current / next. Historical same-season proxies are labeled.
+- **Specialisation filters**: selected specialisations narrow VVZ section-path search; empty selection yields no specialisation results. Eligible ETH MSc core-course programmes can be searched as potentially creditable CSE electives, subject to individual recognition.
+- **Required Study Achievements** on actual dashboard and per scenario: 120 total; 74 main-area credits; two core courses ≥12 ECTS; four specialisation lectures and one seminar ≥18 ECTS; two electives ≥12 ECTS; two case studies (3 ECTS each); term project 8; SiP 2; thesis 30; Scientific Works prerequisite at Bachelor/Master level, and separately selected admission conditions. Core Courses **Advanced Machine Learning** and **Probabilistic Artificial Intelligence** may not both count as cores. Figures are provisional because individual regulations and actual credit approval must be checked.
+- **Graduation grade formula** from MSc-CSE Guidelines §3.3 (p. 10): `(2*core1 + 2*core2 + SUM(four specialisation lecture grades) + SUM(all included elective grades) + 4*thesis_grade) / (12 + number_of_included_electives)`. Each module's internal component grades may first be averaged by its own assessment weights. Grade values never appear outside the private grade page.
+- **Actual VVZ timetable** / **Termine aus VVZAPI**: `/api/v1/course/get/{id}` gives real weekday/start/end/building/floor/room, and `/api/v1/unit/{id}/get` includes exercise groups. They are fetched into the timetable through the shared one-request-per-minute queue, with selectable timeslots and room data; API source/link, historic proxy flag, and optional CourseReview link appear on linked modules. No synthetic times are inserted into personal data.
+- **Course links** / **Verlinkungen**: direct official ETH VVZ for an identified learning unit, or official VVZ number search as fallback; CourseReview links appear only if VVZAPI reports a CourseReview rating. CourseReview is not affiliated with ETH.
+
+Run the optional browser UI regression test with `python3 tests/browser_smoke.py` (developer dependency Playwright/Chromium only). It uses mocked local responses and synthetic course data; no personal data or live API traffic.
+
+### Limitations / Grenzen
+
+The full Guidelines extraction agent is still a future component; a manually reviewed machine-readable rule starter is used, not a binding graduation audit. Programmatic identification of the exact *anrechenbar* course category from the student's admission ruling requires manual confirmation. VVZ timeslots missing times or listed only "by appointment" cannot be rendered as weekly recurring events. Auto-scheduling exercise groups is deliberately opt-in because group selection is personal. A public hosted edition/desktop installer is still not delivered.
 
 ## Storage / Datenspeicher
 
@@ -43,8 +61,9 @@ Default: `./user-data/masterplan.json` and (only if grades are saved) `./user-da
 
 - Search: `GET /api/v0/search/compact` through a local server proxy. Program matching uses the VVZAPI `offered:` section-path filter, with `title:` search and optional core/elective section filters.
 - Course-number results provide semester-specific unit IDs. When the chosen semester is absent, the planner finds the latest *earlier* same-season occurrence and visibly marks it as **proxy** (never confirmed availability).
-- Details endpoint support: `/api/vvz/unit/{id}` and `/api/vvz/times/{id}`. Full timetable slot mapping into the UI remains a follow-up.
-- Rate limiting is **one upstream request every 60 seconds globally per server process**, independent of browser tabs. Matching cached queries return immediately. This deliberately limits browsing throughput; enlarge/change the strategy only after reviewing upstream terms and API capabilities.
+- Details endpoint support: `/api/vvz/unit/{id}` and `/api/vvz/times/{id}`. The timetable endpoint returns normalised actual VVZ course component timeslots and, once the second queued API response arrives, learning-unit exercise-group timeslots; users select which slots to add to their schedule.
+- VVZAPI includes an optional CourseReview average. A CourseReview link is rendered **only when that rating actually exists**; official ETH VVZ links are shown for linked courses independently of reviews. Never invent ratings.
+- Rate limiting is **one upstream request every 60 seconds globally per server process**, independent of browser tabs. The timetable loader queues requests to avoid rate-limit failures; results are cached and visible progressively, not instantaneously when many units are selected. Historic proxy slots are explicitly unconfirmed. The in-memory cache refreshes stale items after 30 minutes when requested; API changes are indicated rather than silently replacing selected slots.
 
 The third-party [VVZAPI](https://github.com/markbeep/vvzapi) project is independent from ETH Zurich, has its own licence (GPL-3.0 for its source) and requests attribution. MasterPlan consumes the public API and does **not** bundle or modify VVZAPI source.
 
@@ -84,6 +103,10 @@ Browser-rendered captures of the real Academic Minimal frontend using **syntheti
 | ![Saved study plans and comparison](docs/screenshots/03-plans.jpg) | ![Course catalogue with degree filters](docs/screenshots/04-catalog.jpg) |
 
 To regenerate: `python tests/create_screenshots.py` (optional developer dependency `playwright` plus Chromium, not required for normal users). Screenshots are taken from actual frontend HTML/CSS/JavaScript with a mocked backend; no production data, grades, or ETH API results are involved.
+
+| Automatic VVZ timetable and optional CourseReview links |
+| --- |
+| ![Timetable with VVZ API slots and links](docs/screenshots/07-api-timetable.jpg) |
 
 
 ### CSE elective core-course filter / CSE-Elective-Core-Filter

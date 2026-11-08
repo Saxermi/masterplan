@@ -21,7 +21,7 @@ SHOTS.mkdir(parents=True,exist_ok=True)
 
 def course(number, title, semester, role, ects, **extra):
     return dict(id=number, number=number, title=title, semester=semester,
-                role=role, ects=ects, status='planned', events=[], **extra)
+                role=role, ects=ects, status='planned', **({'events': [], **extra}))
 
 
 def main():
@@ -30,6 +30,14 @@ def main():
         path.insert(0,str(ROOT))
         from server import initial_state
         demo = initial_state()
+        demo['actualPlan']['courses'] = [
+            course('DEMO-A-01','Numerical Modelling (demo)','2026W','core',6,
+                   unitId=111111,sourceSemester='2026W',reviewAvailable=True,
+                   events=[dict(day=0,start='09:15',end='11:00',building='HG',floor='E',room='33.1',source='manual')]),
+            course('DEMO-A-02','Laboratory Methods (demo)','2026W','elective',4,
+                   unitId=222222,sourceSemester='2026W',events=[]),
+        ]
+        demo['interests'] = [dict(id='demo-interest',number='DEMO-INT-01',title='Advanced Scientific Computing (demo)',ects=6,suggestedRole='specialisation',offerings={'2026W':333333},reviewAvailable=False)]
         physics = demo['plans'][0]
         physics['lockedSemesters'] = ['2026W']
         physics['courses'] = [
@@ -60,8 +68,8 @@ def main():
             page.evaluate("""([state, guidelines]) => {
                window.fetch = async (url) => {
                  const u=String(url);
-                 const data=u.includes('/api/guidelines') ? guidelines : u.includes('/api/vvz/search') ? {
-                   results:[{number:'DEMO-CORE-01',title:'Example Mathematical Core Course',title_english:'Example Mathematical Core Course',credits:9,language:'English',offering:{unit_id:99912,source_semester:'2026W',proxy:false}},
+                 const data=u.includes('/api/guidelines') ? guidelines : u.includes('/api/vvz/times') ? {status:'ready',source:'mock VVZ',meetings:[{day:0,start:'09:15',end:'11:00',building:'HG',floor:'E',room:'33.1',label:'Demo lecture',slotKey:'demo-slot-1'},{day:2,start:'13:15',end:'15:00',building:'ML',floor:'H',room:'48',label:'Demo exercises',slotKey:'demo-slot-2'}]} : u.includes('/api/vvz/search') ? {
+                   results:[{number:'DEMO-CORE-01',rating:4.3,title:'Example Mathematical Core Course',title_english:'Example Mathematical Core Course',credits:9,language:'English',offering:{unit_id:99912,source_semester:'2026W',proxy:false}},
                    {number:'DEMO-CORE-02',title:'Example Engineering Core Course',title_english:'Example Engineering Core Course',credits:6,language:'English',offering:{unit_id:99913,source_semester:'2026W',proxy:false}}],
                    total:2, source:'demonstration only', eligibleCoreElective:true
                  } : state;
@@ -78,6 +86,8 @@ def main():
             # Real UI interactions: compare two different plans in the same spring semester.
             page.locator('#nav').get_by_role('button',name='Studienpläne').click()
             page.get_by_role('button',name='Semester vs. Semester').click()
+            page.locator('#compare-left-plan').select_option('physics')
+            page.locator('#compare-right-plan').select_option('fluids')
             page.locator('#compare-left-sem').select_option('2027S')
             page.locator('#compare-right-sem').select_option('2027S')
             assert page.locator('.compare-pair').count() >= 4
@@ -86,11 +96,17 @@ def main():
             # Real UI interactions: browse eligible ETH MSc Core Courses as CSE electives.
             page.locator('#nav').get_by_role('button',name='Modulkatalog').click()
             page.locator('[data-action="browse-eligible-core"]').click()
+            page.locator('#search-form').evaluate('(form) => form.requestSubmit()')
             page.wait_for_selector('.course-card')
             assert page.locator('#search-form select[name="programme"]').input_value() == 'eligible-core-all'
             assert page.locator('#search-form select[name="category"]').input_value() == 'eligible-core'
-            assert page.get_by_text('MSc Core → CSE Elective (Regeln prüfen)').count() >= 1
+            assert page.get_by_text('MSc-Core → potenzielles CSE-Elective').count() >= 1
             page.screenshot(path=str(SHOTS/'06-eligible-cores.jpg'),full_page=True,type='jpeg',quality=78)
+            page.locator('#nav').get_by_role('button',name='Stundenplan').click()
+            page.wait_for_selector('.meeting-options',timeout=10000)
+            assert page.locator('.meeting-option').count() >= 2
+            assert page.get_by_role('link',name='CourseReview').count() >= 1
+            page.screenshot(path=str(SHOTS/'07-api-timetable.jpg'),full_page=True,type='jpeg',quality=78)
             browser.close()
             for path in sorted(SHOTS.glob('*.jpg')):
                 print(path.name, path.stat().st_size,'bytes')
