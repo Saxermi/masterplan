@@ -21,9 +21,21 @@ python_compatible() {
     "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1
 }
 
+# Python resolves symlinked server.py paths; reject links to an old/trashed tree.
+verify_server_location() {
+  actual=$("$1" -c 'from pathlib import Path; print(Path("server.py").resolve().parent)')
+  expected=$(pwd -P)
+  if [ "$actual" != "$expected" ]; then
+    printf 'MasterPlan: server.py resolves to %s, but this project is in %s.\n' "$actual" "$expected" >&2
+    printf '%s\n' 'Remove the stale symbolic link or clone a complete repository copy.' >&2
+    exit 1
+  fi
+}
+
 # Explicit override for users whose Conda installation makes python3 be 3.9.
 if [ -n "${MASTERPLAN_PYTHON:-}" ]; then
   if python_compatible "$MASTERPLAN_PYTHON"; then
+    verify_server_location "$MASTERPLAN_PYTHON"
     exec "$MASTERPLAN_PYTHON" server.py "$@"
   fi
   printf 'MasterPlan: MASTERPLAN_PYTHON=%s is not a working Python 3.10+ interpreter.\n' "$MASTERPLAN_PYTHON" >&2
@@ -33,6 +45,7 @@ fi
 # First prefer python3, then known versioned commands if python3 is too old.
 for candidate in python3 python3.14 python3.13 python3.12 python3.11 python3.10; do
   if python_compatible "$candidate"; then
+    verify_server_location "$candidate"
     exec "$candidate" server.py "$@"
   fi
 done
