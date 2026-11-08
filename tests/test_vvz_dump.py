@@ -198,6 +198,12 @@ class TestVvzDump(unittest.TestCase):
             install_zip(bad,self.local)
 
     def test_rate_is_one_request_per_minute_shared_by_api_and_dump(self):
+        # GitHub runners can have a monotonic uptime below 60 seconds.
+        with patch('server.time.monotonic',return_value=0):
+            fresh=UpstreamRateLimit(interval=60)
+            fresh.acquire()  # first call must never be delayed
+            with self.assertRaises(RuntimeError):
+                fresh.acquire()
         gate=UpstreamRateLimit(interval=60)
         gate.acquire()
         with self.assertRaisesRegex(RuntimeError,'VVZ rate limit'):

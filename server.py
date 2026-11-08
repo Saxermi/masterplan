@@ -284,7 +284,8 @@ class UpstreamRateLimit:
     def __init__(self, interval=60.0):
         self.lock = threading.RLock()
         self.interval = interval
-        self.last_request = 0.0
+        # A first request must be permitted even on systems booted <60s ago.
+        self.last_request = -self.interval
 
     def acquire(self, wait=False):
         while True:
