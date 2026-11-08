@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#204a78"><meta name="description" content="MasterPlan – ETH CSE study planning">
+  <link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css"><title>MasterPlan</title>
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><span class="brand-mark">M</span><span>masterplan<span class="brand-dot">.</span></span></div>
+    <div class="sidebar-sub">ETH Zürich · MSc CSE</div>
+    <nav id="nav" aria-label="Navigation"></nav>
+    <div class="sidebar-bottom"><span class="status-dot"></span><span id="save-status">Local-first</span></div>
+  </aside>
+  <div class="content-shell"><header class="topbar"><button class="iconbtn mobile-menu" id="menu-toggle" aria-label="Menu">☰</button><div><strong id="top-title">MasterPlan</strong><span class="top-sub">Computational Science and Engineering</span></div><div class="top-actions"><button id="lang-toggle" class="smallbtn" title="Language">DE</button><button id="theme-toggle" class="iconbtn" title="Theme">☾</button><span class="avatar">MP</span></div></header><main id="app"></main></div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

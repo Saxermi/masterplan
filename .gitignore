@@ -1,0 +1,38 @@
+# Personal planning data and encrypted grades (NEVER commit)
+/user-data/
+/data/
+/**/grades.enc
+/**/masterplan.json
+/**/*.backup.json
+/**/*.bak
+/backups/
+*.sqlite
+*.sqlite3
+*.db
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+# Caches, generated and temporary files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+node_modules/
+dist/
+build/
+coverage/
+.cache/
+*.log
+*.tmp
+# Editor and OS noise
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp

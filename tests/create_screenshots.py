@@ -1,0 +1,77 @@
+"""Capture real MasterPlan UI screenshots with synthetic demo-only data.
+
+Optional developer dependency: pip install playwright, install Chromium separately.
+Run: python tests/create_screenshots.py
+"""
+from __future__ import annotations
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+from urllib.request import urlopen
+from playwright.sync_api import sync_playwright
+
+ROOT = Path(__file__).resolve().parents[1]
+SHOTS = ROOT / 'docs' / 'screenshots'
+SHOTS.mkdir(parents=True,exist_ok=True)
+
+
+def course(number, title, semester, role, ects, **extra):
+    return dict(id=number, number=number, title=title, semester=semester,
+                role=role, ects=ects, status='planned', events=[], **extra)
+
+
+def main():
+    with tempfile.TemporaryDirectory(prefix='masterplan-screens-') as folder:
+        from sys import path
+        path.insert(0,str(ROOT))
+        from server import initial_state
+        demo = initial_state()
+        physics = demo['plans'][0]
+        physics['lockedSemesters'] = ['2026W']
+        physics['courses'] = [
+            course('D-001','Computational Methods in Physics','2026W','core',6,locked=True),
+            course('D-002','Numerical Simulation','2026W','specialisation',6,locked=True),
+            course('D-003','Mathematical Modelling','2027S','core',6,proxy=True,sourceSemester='2026S'),
+            course('D-004','Fluid Mechanics Seminar','2027S','specialisation',3),
+            course('D-005','Introduction to Astrophysics','2027S','extra',4),
+            course('D-006','Computational Physics Project','2027W','project',8),
+        ]
+        fluids = demo['plans'][1]
+        fluids['courses'] = [
+            course('D-001','Computational Methods in Physics','2026W','core',6),
+            course('D-010','Applied Fluid Mechanics','2027S','specialisation',6),
+            course('D-011','Computational Fluid Dynamics','2027S','specialisation',6),
+            course('D-012','Advanced Numerical Algorithms','2027W','elective',4),
+        ]
+        Path(folder, 'masterplan.json').write_text(json.dumps(demo),encoding='utf-8')
+        with sync_playwright() as p:
+            browser=p.chromium.launch(headless=True,executable_path=os.environ.get('CHROMIUM', '/usr/bin/chromium'), args=['--no-sandbox'])
+            page=browser.new_page(viewport={'width':1440,'height':980}, device_scale_factor=1)
+            # Render the real frontend assets with a mocked local API, without a live server.
+            html=(ROOT/'web/index.html').read_text(encoding='utf-8')
+            html=html.replace('<script type="module" src="/app.js"></script>','').replace('<link rel="stylesheet" href="/styles.css">','')
+            page.set_content(html)
+            page.add_style_tag(content=(ROOT/'web/styles.css').read_text(encoding='utf-8'))
+            guidelines=json.loads((ROOT/'guidelines/cse-guidelines.json').read_text(encoding='utf-8'))
+            page.evaluate("""([state, guidelines]) => {
+               window.fetch = async (url) => {
+                 const data = String(url).includes('/api/guidelines') ? guidelines : state;
+                 return new Response(JSON.stringify(data), {status:200, headers:{'Content-Type':'application/json'}})
+               };
+             }""",[demo,guidelines])
+            page.add_script_tag(content=(ROOT/'web/app.js').read_text(encoding='utf-8'))
+            page.wait_for_selector('.metric')
+            page.screenshot(path=str(SHOTS/'01-dashboard.jpg'),full_page=True, type='jpeg', quality=78)
+            for menu, file in [('Semesterplanung','02-semesters.jpg'),('Studienpläne','03-plans.jpg'),('Modulkatalog','04-catalog.jpg')]:
+                page.locator('#nav').get_by_role('button',name=menu).first.click()
+                page.wait_for_timeout(150)
+                page.screenshot(path=str(SHOTS/file),full_page=True, type='jpeg', quality=78)
+            browser.close()
+            for path in sorted(SHOTS.glob('*.jpg')):
+                print(path.name, path.stat().st_size,'bytes')
+
+if __name__ == '__main__': main()

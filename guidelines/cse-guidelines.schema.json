@@ -1,0 +1,20 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"MasterPlan guidelines agent output",
+  "type":"object",
+  "required":["schemaVersion","programme","source","sourceChecked","requirements","gradeWeights","titles","provenance"],
+  "properties":{
+    "schemaVersion":{"const":1},
+    "programme":{"type":"string"},
+    "source":{"type":"string","format":"uri"},
+    "sourceChecked":{"type":"boolean"},
+    "notice":{"type":"string"},
+    "effectiveFrom":{"type":["string","null"]},
+    "titles":{"type":"object","additionalProperties":{"type":"object","properties":{"de":{"type":"string"},"en":{"type":"string"}}}},
+    "requirements":{"type":"array","items":{"type":"object","required":["id","minEcts"],"properties":{"id":{"type":"string"},"minEcts":{"type":"number","minimum":0},"minCourses":{"type":"integer","minimum":0},"minLectures":{"type":"integer","minimum":0},"minSeminars":{"type":"integer","minimum":0},"group":{"type":"string"}}}},
+    "gradeWeights":{"type":"object","additionalProperties":{"type":"number","minimum":0}},
+    "provenance":{"type":"array","items":{"type":"object","required":["source","page","text"],"properties":{"source":{"type":"string"},"page":{"type":"integer","minimum":1},"text":{"type":"string"}}}},
+    "createdBy":{"type":"string"}
+  },
+  "additionalProperties":true
+}

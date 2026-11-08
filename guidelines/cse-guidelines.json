@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "programme": "ETH MSc Computational Science and Engineering",
+  "source": "https://ethz.ch/content/dam/ethz/special-interest/study-programme-websites/ms-compsci-and-eng-dam/documents/master-programme/MSc-CSE-Guidelines.pdf",
+  "sourceChecked": false,
+  "notice": "Starter thresholds only; verify against the individual binding regulations and admission conditions. Do not treat as an official academic audit.",
+  "effectiveFrom": null,
+  "titles": {},
+  "requirements": [
+    {"id":"main","minEcts":74,"group":"main-areas"},
+    {"id":"core","minEcts":12,"minCourses":2},
+    {"id":"spec","minEcts":18,"minLectures":4,"minSeminars":1},
+    {"id":"elective","minEcts":12,"minCourses":2},
+    {"id":"case","minEcts":6},
+    {"id":"project","minEcts":8},
+    {"id":"sip","minEcts":2},
+    {"id":"thesis","minEcts":30},
+    {"id":"total","minEcts":120}
+  ],
+  "gradeWeights": {"coreCourse":2,"specialisationLecture":1,"elective":1,"masterThesis":4},
+  "provenance": [],
+  "createdBy": "manual-starter; replace via validated agent output"
+}
