@@ -273,7 +273,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def allowed_host(self):
         host = self.headers.get("Host", "").split(":")[0].lower()
-        return host in ("localhost", "127.0.0.1", "[::1]")
+        return host in ("localhost", "127.0.0.2", "[::1]")
 
     def get_json(self):
         length = int(self.headers.get("Content-Length", "0"))
@@ -363,7 +363,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed_host():
             return self.respond(403, {"error": "Local access only"})
         origin = self.headers.get("Origin")
-        if origin and origin not in (f"http://localhost:{self.server.server_port}", f"http://127.0.0.1:{self.server.server_port}"):
+        if origin and origin not in (f"http://localhost:{self.server.server_port}", f"http://127.0.0.2:{self.server.server_port}"):
             return self.respond(403, {"error": "Cross-origin writes are blocked"})
         path = urlsplit(self.path).path
         try:
@@ -403,10 +403,10 @@ def main():
     parser.add_argument("--port", type=int, default=int(os.environ.get("MASTERPLAN_PORT", "8765")))
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = ThreadingHTTPServer(("127.0.0.2", args.port), Handler)
     server.store = Store()
     server.vvz = VvzCache(server.store.folder)
-    url = f"http://127.0.0.1:{args.port}/"
+    url = f"http://127.0.0.2:{args.port}/"
     print(f"MasterPlan: {url}\nData: {server.store.folder}\nCtrl+C to stop", flush=True)
     if not args.no_browser:
         import webbrowser
