@@ -70,3 +70,26 @@ user-data/                private local data, gitignored (created on first run)
 ## Design values
 
 Low data footprint, no grade leakage, no silent overwriting of locked semesters, clear differentiation of **planned** and **completed**, explicit historic proxies and visible uncertain academic recognition.
+
+## Screenshots / Bildschirmfotos
+
+Browser-rendered captures of the real Academic Minimal frontend using **synthetic demo data**, not real student records. They are intentionally kept separate from `user-data/`.
+
+| Dashboard | Semester planning |
+| --- | --- |
+| ![Dashboard with ECTS summary](docs/screenshots/01-dashboard.jpg) | ![Semester planning with locked terms and historical proxy](docs/screenshots/02-semesters.jpg) |
+
+| Plan comparison | ETH module catalogue |
+| --- | --- |
+| ![Saved study plans and comparison](docs/screenshots/03-plans.jpg) | ![Course catalogue with degree filters](docs/screenshots/04-catalog.jpg) |
+
+To regenerate: `python tests/create_screenshots.py` (optional developer dependency `playwright` plus Chromium, not required for normal users). Screenshots are taken from actual frontend HTML/CSS/JavaScript with a mocked backend; no production data, grades, or ETH API results are involved.
+
+
+### CSE elective core-course filter / CSE-Elective-Core-Filter
+
+The catalogue includes **“MSc Core Courses → CSE Electives”** with a one-click option to browse all eligible Master's programmes or narrow to one programme. The eligible study programmes are Statistics, Physics, Computer Science, Mathematics (including Applied Mathematics), Neural Systems and Computation, Robotics, Systems and Control, Data Science, and Electrical Engineering and Information Technology. This list follows the [MSc CSE Guidelines, section 3.6, p. 19](https://ethz.ch/content/dam/ethz/special-interest/study-programme-websites/ms-compsci-and-eng-dam/documents/master-programme/MSc-CSE-Guidelines.pdf). It uses VVZAPI section-path filters, with **Core Courses**, not general elective labels.
+
+A filtered course is **potentially eligible without prior approval**, not guaranteed to be credited: exclusions such as previous Bachelor credit use, category duplication, personal study regulations, and current VVZ classifications still apply. The study planner does not submit ETH credit requests. / Ein Treffer bedeutet **grundsätzlich ohne vorgängige Bewilligung wählbar**, nicht automatisch angerechnet. Vorherige Bachelor-Anrechnung, Doppelzählungen, persönliche Reglementsfassung und aktuelle VVZ-Einstufung müssen geprüft werden.
+
+The **Study plans → Semester vs. semester** view allows comparing any two semesters from the same or different plans side by side, including common/unique modules, category/ECTS/status differences, locked and extra courses. This UI-only selection does not increase the saved study-plan file size. / Unter **Studienpläne → Semester vs. Semester** können zwei beliebige Semester aus gleichen oder unterschiedlichen Plänen modulweise verglichen werden.

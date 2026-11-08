@@ -6,7 +6,7 @@ import unittest
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from server import Store, VvzCache, initial_state, select_offering, valid_state
+from server import Store, VvzCache, initial_state, select_offering, valid_state, build_catalog_query, ELIGIBLE_CORE_PROGRAMMES
 
 
 class TestStore(unittest.TestCase):
@@ -38,6 +38,26 @@ class TestStore(unittest.TestCase):
 
 
 class TestCatalog(unittest.TestCase):
+    def test_eligible_core_masters_only(self):
+        for programme in ELIGIBLE_CORE_PROGRAMMES:
+            q = build_catalog_query('numerical', programme, 'eligible-core')
+            self.assertIn('o:"core courses"', q)
+            self.assertIn('title:"numerical"', q)
+        with self.assertRaises(ValueError):
+            build_catalog_query('', 'mathematics-bsc', 'eligible-core')
+        with self.assertRaises(ValueError):
+            build_catalog_query('', 'all', 'eligible-core')
+
+    def test_union_core_course_filter(self):
+        q = build_catalog_query('', 'eligible-core-all', 'eligible-core')
+        self.assertEqual(q.count('o:"core courses"'), 8)  # MSc (Applied) Mathematics share a VVZ tree
+        self.assertIn(' OR ', q)
+        self.assertIn('neural systems and computation master', q)
+        self.assertIn('electrical engineering and information technology master', q)
+        self.assertNotIn('mathematics bachelor', q)
+        with self.assertRaises(ValueError):
+            build_catalog_query('', 'eligible-core-all', 'elective')
+
     def test_same_season_proxy_only_past(self):
         semesters={'2025W': 2,'2026S': 3,'2026W': 4}
         self.assertEqual(select_offering(semesters, '2027S'), {'unit_id':3,'source_semester':'2026S','proxy':True})

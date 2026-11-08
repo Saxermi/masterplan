@@ -7,17 +7,77 @@
   "effectiveFrom": null,
   "titles": {},
   "requirements": [
-    {"id":"main","minEcts":74,"group":"main-areas"},
-    {"id":"core","minEcts":12,"minCourses":2},
-    {"id":"spec","minEcts":18,"minLectures":4,"minSeminars":1},
-    {"id":"elective","minEcts":12,"minCourses":2},
-    {"id":"case","minEcts":6},
-    {"id":"project","minEcts":8},
-    {"id":"sip","minEcts":2},
-    {"id":"thesis","minEcts":30},
-    {"id":"total","minEcts":120}
+    {
+      "id": "main",
+      "minEcts": 74,
+      "group": "main-areas"
+    },
+    {
+      "id": "core",
+      "minEcts": 12,
+      "minCourses": 2
+    },
+    {
+      "id": "spec",
+      "minEcts": 18,
+      "minLectures": 4,
+      "minSeminars": 1
+    },
+    {
+      "id": "elective",
+      "minEcts": 12,
+      "minCourses": 2
+    },
+    {
+      "id": "case",
+      "minEcts": 6
+    },
+    {
+      "id": "project",
+      "minEcts": 8
+    },
+    {
+      "id": "sip",
+      "minEcts": 2
+    },
+    {
+      "id": "thesis",
+      "minEcts": 30
+    },
+    {
+      "id": "total",
+      "minEcts": 120
+    }
   ],
-  "gradeWeights": {"coreCourse":2,"specialisationLecture":1,"elective":1,"masterThesis":4},
+  "gradeWeights": {
+    "coreCourse": 2,
+    "specialisationLecture": 1,
+    "elective": 1,
+    "masterThesis": 4
+  },
   "provenance": [],
-  "createdBy": "manual-starter; replace via validated agent output"
+  "createdBy": "manual-starter; replace via validated agent output",
+  "electiveEligibility": {
+    "policy": "core-courses-of-listed-eth-master-programmes",
+    "coreCourseProgrammeKeys": [
+      "statistics-msc",
+      "physics-msc",
+      "computer-science-msc",
+      "mathematics-msc",
+      "applied-mathematics-msc",
+      "neural-systems-msc",
+      "robotics-msc",
+      "data-science-msc",
+      "electrical-engineering-msc"
+    ],
+    "requiresPriorPermission": false,
+    "sourceSection": "3.6 Elective Courses",
+    "sourcePage": 19,
+    "conditions": [
+      "Only modules listed as Core Courses, not the programme electives.",
+      "No credit reuse from a Bachelor degree.",
+      "No double counting and subject to applicable personal regulations."
+    ],
+    "notice": "Eligibility category only. Do not automatically mark any course as approved or completed."
+  }
 }

@@ -31,8 +31,56 @@ DEGREES = {
     "computer-science-msc": "computer science master",
     "statistics-msc": "statistics master",
     "data-science-msc": "data science master",
+    "applied-mathematics-msc": "mathematics master",  # ETH VVZ groups pure/applied under Mathematics Master
+    "neural-systems-msc": "neural systems and computation master",
+    "robotics-msc": "robotics, systems and control master",
+    "electrical-engineering-msc": "electrical engineering and information technology master",
+    "eligible-core-all": "",  # all automatically eligible ETH MSc core courses
     "all": "",
 }
+
+
+# ETH MSc CSE Guidelines 2024, §3.6 (July 2026 edition), page 19:
+# Core Courses (NOT general electives) from the programmes below can be selected
+# as CSE electives without prior permission; double counting and bachelor credit
+# recognition rules still apply. The two Mathematics programmes share a VVZ tree.
+# Guidelines-agent output is the source of truth; updates apply after a restart.
+ELIGIBLE_CORE_PROGRAMMES = frozenset(json.loads(
+    (BASE / "guidelines" / "cse-guidelines.json").read_text(encoding="utf-8")
+).get("electiveEligibility", {}).get("coreCourseProgrammeKeys", []))
+
+
+def build_catalog_query(query, programme, category):
+    """Return a VVZAPI offered-section query, rejecting unsupported eligibility claims."""
+    if programme not in DEGREES:
+        raise ValueError("Unknown programme")
+    if category not in ("", "core", "elective", "eligible-core"):
+        raise ValueError("Unknown course category")
+    clean = query.strip()[:120].replace('"', '')
+    if category == "eligible-core":
+        if programme == "eligible-core-all":
+            # A module can appear in multiple programmes: VVZ compact search
+            # groups by course number and naturally deduplicates these results.
+            distinct_paths = sorted({DEGREES[p] for p in ELIGIBLE_CORE_PROGRAMMES})
+            clauses = [f'(o:"{p}" o:"core courses")' for p in distinct_paths]
+            course_query = "(" + " OR ".join(clauses) + ")"
+        elif programme in ELIGIBLE_CORE_PROGRAMMES:
+            course_query = f'o:"{DEGREES[programme]}" o:"core courses"'
+        else:
+            raise ValueError("Select an eligible MSc programme for CSE core-course electives")
+        return " ".join([course_query, f'title:"{clean}"' if clean else ""]).strip()
+    if programme == "eligible-core-all":
+        raise ValueError("Choose the CSE-elective core-course category")
+    clauses = []
+    if DEGREES[programme]:
+        clauses.append(f'o:"{DEGREES[programme]}"')
+    if category in ("core", "elective"):
+        clauses.append(f'o:"{"core courses" if category == "core" else "electives"}"')
+    if clean:
+        clauses.append(f'title:"{clean}"')
+    if not clauses:
+        raise ValueError("Provide a search term or select a programme")
+    return " ".join(clauses)
 
 
 def initial_state():
@@ -257,23 +305,13 @@ class Handler(BaseHTTPRequestHandler):
                 programme = params.get("programme", ["cse"])[0]
                 category = params.get("category", [""])[0]
                 semester = params.get("semester", [""])[0]
-                if programme not in DEGREES:
-                    raise ValueError("Unknown programme")
-                clauses = []
-                if DEGREES[programme]:
-                    clauses.append('o:"' + DEGREES[programme] + '"')
-                if category in ("core", "elective"):
-                    clauses.append('o:"' + ("core courses" if category == "core" else "electives") + '"')
-                if query:
-                    clauses.append('title:"' + query.replace('"', "") + '"')
+                vvz_query = build_catalog_query(query, programme, category)
                 if re.fullmatch(r"\d{4}[SW]", semester):
                     # Keep all offerings, because a previous same-season one might be used as proxy.
                     pass
-                if not clauses:
-                    raise ValueError("Provide a search term or select a programme")
                 limit = min(60, max(1, int(params.get("limit", ["40"])[0])))
                 offset = max(0, min(10000, int(params.get("offset", ["0"])[0])))
-                url = CATALOG_BASE + "/api/v0/search/compact?" + urlencode({"q": " ".join(clauses), "offset": offset, "limit": limit, "order_by": "title", "order": "asc"})
+                url = CATALOG_BASE + "/api/v0/search/compact?" + urlencode({"q": vvz_query, "offset": offset, "limit": limit, "order_by": "title", "order": "asc"})
                 data, source = self.server.vvz.get(url)
                 if not isinstance(data, dict) or not isinstance(data.get("results"), list):
                     raise ValueError("Invalid VVZ search result")
@@ -285,7 +323,7 @@ class Handler(BaseHTTPRequestHandler):
                     if re.fullmatch(r"\d{4}[SW]", semester):
                         item["offering"] = select_offering(row.get("semesters") or {}, semester)
                     results.append(item)
-                return self.respond(200, {"results": results, "total": data.get("total"), "source": source, "query": " ".join(clauses)})
+                return self.respond(200, {"results": results, "total": data.get("total"), "source": source, "query": vvz_query, "eligibleCoreElective": category == "eligible-core"})
             except (RuntimeError, ValueError, TypeError) as exc:
                 return self.respond(503, {"error": str(exc)})
         if path.startswith("/api/vvz/unit/"):

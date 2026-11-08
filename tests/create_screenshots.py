@@ -59,7 +59,12 @@ def main():
             guidelines=json.loads((ROOT/'guidelines/cse-guidelines.json').read_text(encoding='utf-8'))
             page.evaluate("""([state, guidelines]) => {
                window.fetch = async (url) => {
-                 const data = String(url).includes('/api/guidelines') ? guidelines : state;
+                 const u=String(url);
+                 const data=u.includes('/api/guidelines') ? guidelines : u.includes('/api/vvz/search') ? {
+                   results:[{number:'DEMO-CORE-01',title:'Example Mathematical Core Course',title_english:'Example Mathematical Core Course',credits:9,language:'English',offering:{unit_id:99912,source_semester:'2026W',proxy:false}},
+                   {number:'DEMO-CORE-02',title:'Example Engineering Core Course',title_english:'Example Engineering Core Course',credits:6,language:'English',offering:{unit_id:99913,source_semester:'2026W',proxy:false}}],
+                   total:2, source:'demonstration only', eligibleCoreElective:true
+                 } : state;
                  return new Response(JSON.stringify(data), {status:200, headers:{'Content-Type':'application/json'}})
                };
              }""",[demo,guidelines])
@@ -70,6 +75,22 @@ def main():
                 page.locator('#nav').get_by_role('button',name=menu).first.click()
                 page.wait_for_timeout(150)
                 page.screenshot(path=str(SHOTS/file),full_page=True, type='jpeg', quality=78)
+            # Real UI interactions: compare two different plans in the same spring semester.
+            page.locator('#nav').get_by_role('button',name='Studienpläne').click()
+            page.get_by_role('button',name='Semester vs. Semester').click()
+            page.locator('#compare-left-sem').select_option('2027S')
+            page.locator('#compare-right-sem').select_option('2027S')
+            assert page.locator('.compare-pair').count() >= 4
+            assert page.get_by_text('Mathematical Modelling').count() >= 1
+            page.screenshot(path=str(SHOTS/'05-semester-comparison.jpg'),full_page=True,type='jpeg',quality=78)
+            # Real UI interactions: browse eligible ETH MSc Core Courses as CSE electives.
+            page.locator('#nav').get_by_role('button',name='Modulkatalog').click()
+            page.locator('[data-action="browse-eligible-core"]').click()
+            page.wait_for_selector('.course-card')
+            assert page.locator('#search-form select[name="programme"]').input_value() == 'eligible-core-all'
+            assert page.locator('#search-form select[name="category"]').input_value() == 'eligible-core'
+            assert page.get_by_text('MSc Core → CSE Elective (Regeln prüfen)').count() >= 1
+            page.screenshot(path=str(SHOTS/'06-eligible-cores.jpg'),full_page=True,type='jpeg',quality=78)
             browser.close()
             for path in sorted(SHOTS.glob('*.jpg')):
                 print(path.name, path.stat().st_size,'bytes')
