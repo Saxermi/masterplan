@@ -322,7 +322,7 @@ class VvzCache:
         if file and file.exists():
             try:
                 value = json.loads(file.read_text(encoding='utf-8'))
-                if isinstance(value.get('courses'), list):
+                if isinstance(value, dict) and isinstance(value.get('courses'), list) and isinstance(value.get('checked'), (int, float)):
                     return value
             except (ValueError, OSError):
                 pass
@@ -468,7 +468,8 @@ def normalize_meetings(courses):
                     "date": str(slot.get("date") or "")[:24],
                     "biweekly": bool(slot.get("biweekly")),
                     "firstHalf": bool(slot.get("first_half_semester")),
-                    "secondHalf": bool(slot.get("second_half_semester"))}
+                    "secondHalf": bool(slot.get("second_half_semester")),
+                    "note": str(course.get("comment") or "")[:1500]}
             # Stable slot identity ensures previously selected slots can be retained.
             item["slotKey"] = hashlib.sha256(json.dumps(item, sort_keys=True).encode()).hexdigest()[:20]
             normalized.append(item)

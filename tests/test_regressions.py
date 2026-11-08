@@ -84,6 +84,8 @@ class ScheduleRegression(unittest.TestCase):
                          [(3, '10:15', 'HG', '5'), (0, '12:15', 'ML', '44')])
         numerical = normalize_meetings(parse_official_courses((FIXTURES / 'numerical-hs26.html').read_text()))
         self.assertEqual([(x['day'], x['start']) for x in numerical], [(1, '08:15'), (4, '08:15')])
+        self.assertEqual(numerical[0]['label'], 'Numerical Methods for CSE')
+        self.assertIn('first week', numerical[0]['note'])
 
     def test_null_json_collections_and_invalid_clock_times(self):
         self.assertEqual(_json_value('null', []), [])

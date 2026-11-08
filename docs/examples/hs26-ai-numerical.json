@@ -17,7 +17,7 @@
     "lockedSemesters": [],
     "courses": [
       {
-        "id": "1f206afc-549b-4201-b6a3-f8f85984c64a",
+        "id": "a12dde57-2df9-472d-9dcf-9304647d23af",
         "number": "401-4656-21L",
         "title": "AI in the Sciences and Engineering",
         "ects": 6,
@@ -40,8 +40,9 @@
             "biweekly": false,
             "firstHalf": false,
             "secondHalf": false,
+            "note": "",
             "source": "vvz",
-            "apiSlot": "f9ee968eaeb888a15453",
+            "apiSlot": "97cd5d2605c292332613",
             "sourceSemester": "2026W"
           },
           {
@@ -55,8 +56,9 @@
             "biweekly": false,
             "firstHalf": false,
             "secondHalf": false,
+            "note": "",
             "source": "vvz",
-            "apiSlot": "6c2a3604235eae9df930",
+            "apiSlot": "43d46a4a05751fe4d3c7",
             "sourceSemester": "2026W"
           }
         ],
@@ -64,7 +66,7 @@
         "creditApproved": null
       },
       {
-        "id": "72e5c730-aaa5-4646-85d0-faebe8d32da9",
+        "id": "32ed71f2-9684-41fa-8fcf-e3393c00940b",
         "number": "401-2673-00L",
         "title": "Numerical Methods for CSE",
         "ects": 9,
@@ -87,8 +89,9 @@
             "biweekly": false,
             "firstHalf": false,
             "secondHalf": false,
+            "note": "exercises start in the first week of the semester",
             "source": "vvz",
-            "apiSlot": "96ecd8c46fd102a7053c",
+            "apiSlot": "c60dae28dda158e78754",
             "sourceSemester": "2026W"
           },
           {
@@ -102,8 +105,9 @@
             "biweekly": false,
             "firstHalf": false,
             "secondHalf": false,
+            "note": "This course is designed in a flipped classroom format based on video tutorials and supplemented by a weekly question-and-answer session, for which attendance is highly recommended.The class will be in HG G 5 in the first week of the semester (15 September 2026) and will take place in HG G 19.1 for the rest of the semester.",
             "source": "vvz",
-            "apiSlot": "4172b328dc2d990f2c21",
+            "apiSlot": "8615b1bf3d56ae47ed5f",
             "sourceSemester": "2026W"
           }
         ],
@@ -115,7 +119,7 @@
   },
   "interests": [
     {
-      "id": "fced25e1-1e37-48c8-b282-b6303401eb99",
+      "id": "00e510b0-6c96-43d9-8638-712796c3a889",
       "number": "401-4656-21L",
       "title": "AI in the Sciences and Engineering",
       "ects": 6,
@@ -128,7 +132,7 @@
       "reviewAvailable": true
     },
     {
-      "id": "89f7f398-1379-45f2-9575-953ba1be477f",
+      "id": "6458887c-88eb-4589-b4a4-c17e40812b30",
       "number": "401-2673-00L",
       "title": "Numerical Methods for CSE",
       "ects": 9,

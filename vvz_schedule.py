@@ -71,7 +71,12 @@ def parse_official_courses(html):
                             [('building', 'gebaeude'), ('floor', 'geschoss'), ('room', 'raumNr')]}
                     break
             slots.append({'weekday': days[cols[0].text()], 'start_time': times[1], 'end_time': times[2], **room})
-        courses.append({'number': cells[0].text(), 'title': cells[1].text(), 'timeslots': slots})
+        comments = [c for c in cells[1].children if isinstance(c, Node) and
+                    'kommentar-lv' in c.attrs.get('class', '').split()]
+        title = ' '.join(c.strip() if isinstance(c, str) else c.text()
+                         for c in cells[1].children if c not in comments).strip()
+        courses.append({'number': cells[0].text(), 'title': title, 'timeslots': slots,
+                        'comment': ' '.join(c.text() for c in comments)})
     if not courses:
         raise ValueError('Official VVZ returned no recognizable courses')
     return courses
