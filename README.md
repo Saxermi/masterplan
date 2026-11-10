@@ -188,3 +188,19 @@ duplicate allocations and confirmed offerings are checked again when saving. Sel
 when the semester changes. The existing “Change allocation” editor remains available for keyboard
 and touch workflows. Developer regression: `node --test tests/*.test.cjs` and
 `python3 tests/browser_bulk.py` (native Chromium drag-and-drop, synthetic data only).
+
+### Spezialisierungsseminar / Specialisation seminar
+
+Die Anrechnungskategorie **Spezialisierungsseminar** ist direkt bei Zuweisung, Mehrfachauswahl,
+manueller Erfassung und nachträglicher Zuordnungsänderung verfügbar. Im englischen Interface heißt
+sie **Specialisation seminar**. Intern bleibt sie Teil der Spezialisierung: ECTS zählen dort, das
+Seminar zählt einmal und ersetzt keine der vier Vorlesungen. Seminar-Noten bleiben aus der
+Schlussnotenformel ausgeschlossen. Bestehende Einträge mit `role=specialisation, subtype=seminar`
+bleiben kompatibel. Fehlt die Art, wird das Wort „Seminar“ im Titel als Hinweis verwendet; eine
+explizite Eintragung als Vorlesung hat Vorrang.
+
+The category **Specialisation seminar** is available in assignment, batch selection, manual entry
+and the allocation editor. It remains part of specialisation credits while counting separately from
+its four lectures. Seminar grades are excluded from the final-grade formula. Existing seminar
+records remain compatible. Missing subtype metadata can use “Seminar” in the title as a hint;
+an explicit lecture classification takes precedence. Academic field recognition remains provisional.

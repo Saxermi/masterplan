@@ -258,7 +258,7 @@ def valid_state(x):
             return False
         if 'ects' in interest and not _credits(interest['ects']):
             return False
-        if not _text(interest.get('number', ''), 60) or interest.get('suggestedRole', 'extra') not in (*CATEGORY_PATHS, 'extra'):
+        if not _text(interest.get('number', ''), 60) or interest.get('suggestedRole', 'extra') not in (*CATEGORY_PATHS, 'extra', 'specialisation-seminar'):
             return False
         offerings = interest.get('offerings', {})
         if not isinstance(offerings, dict) or len(offerings) > 100 or any(not _term(k) or type(v) is not int or not 1 <= v <= 1_000_000_000 for k, v in offerings.items()):

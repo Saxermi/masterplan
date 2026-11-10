@@ -39,3 +39,4 @@ jobs:
           python tests/browser_allocations.py
           python tests/browser_semester_flow.py
           python tests/browser_bulk.py
+          python tests/browser_seminar.py
