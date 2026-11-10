@@ -30,7 +30,7 @@ def main():
                 page.locator('[data-action="close-details"]').click();page.locator('[data-nav="schedule"]').click();page.locator('#schedule-sem').select_option('2027S')
                 assert page.locator('#schedule-modules [data-schedule-course]').count()==1
                 module=page.locator('[data-schedule-course="history"]');module.click();page.locator('.daycell[data-day="0"][data-start="08:00"]').click()
-                form=page.locator('#event-form');assert form.locator('[name="course"]').input_value()=='history';assert form.locator('[name="start"]').input_value()=='08:00';form.locator('[name="end"]').fill('09:30');form.locator('button[type="submit"]').click()
+                form=page.locator('#event-form');assert form.locator('[name="course"]').input_value()=='history';assert form.locator('[name="start"]').input_value()=='08:00';form.locator('[name="end"]').fill('09:30');page.locator('#lang-toggle').click();page.wait_for_function("()=>document.documentElement.lang==='de'");assert form.locator('[name="end"]').input_value()=='09:30';form.locator('button[type="submit"]').click()
                 page.wait_for_function("async()=>((await(await fetch('/api/state')).json()).actualPlan.courses[0].events.length===1)")
                 page.locator('[data-schedule-course="history"]').drag_to(page.locator('.daycell[data-day="2"][data-start="10:00"]'))
                 assert form.locator('[name="day"]').input_value()=='2';assert form.locator('[name="start"]').input_value()=='10:00';form.locator('button[type="submit"]').click()

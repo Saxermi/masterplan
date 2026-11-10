@@ -250,3 +250,10 @@ vault; actual marks remain separate from hypothetical assumptions. Leaving both 
 the vault. Simulated averages use the same category weights and exclusions as the grade page;
 recognition and individual assessment regulations remain subject to manual verification. Developer
 coverage: `node --test tests/*.test.cjs` and `python3 tests/browser_grades.py`.
+
+
+Die Modulbearbeitung verwendet jetzt ebenfalls ein Formular mit Dropdowns für Semester,
+Anrechnungskategorie und Status statt Browser-Eingabefenstern. Titel, ECTS, Spezialisierungsgebiet
+und Bachelor-Verwendung können dort gemeinsam bearbeitet werden. Die Quellen-/Sperrprüfungen
+bleiben bestehen. / Course editing now uses a form with semester, category and status dropdowns
+instead of native browser prompts. Pending manual timetable input survives background schedule refreshes.

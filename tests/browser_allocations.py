@@ -85,27 +85,21 @@ def main():
                 # A real editor path can create a specialisation seminar.
                 s=initial_state();s['language']='en';s['interests']=[{'id':'placeholder','title':'Placeholder','ects':0,'offerings':{}}]
                 load(s);page.locator('[data-nav="semesters"]').click()
-                answers=iter(['Seminar fixture','TEST-SEM','2026W','2','specialisation','planned','seminar','Physics'])
-                def dialog(e):
-                    if e.type=='confirm':e.dismiss()
-                    else:e.accept(next(answers))
-                page.on('dialog',dialog);page.locator('[data-action="manual-course"]').click()
+                page.locator('[data-action="manual-course"]').click()
+                form=page.locator('#module-edit-form');form.locator('[name="title"]').fill('Seminar fixture');form.locator('[name="number"]').fill('TEST-SEM');form.locator('[name="ects"]').fill('2');form.locator('[name="role"]').select_option('specialisation-seminar');form.locator('[name="specialisation"]').fill('Physics');form.locator('button[type="submit"]').click()
                 page.wait_for_function("async()=>((await (await fetch('/api/state')).json()).actualPlan.courses.length===1)")
                 saved=server.store.get();assert saved['actualPlan']['courses'][0]['subtype']=='seminar';assert saved['actualPlan']['courses'][0]['specialisation']=='Physics'
-                page.remove_listener('dialog',dialog)
                 # An imaginary completed course in a scenario must not enter actual history.
                 s=initial_state();s['language']='en';s['activePlan']='physics';s['interests']=[{'id':'placeholder','title':'Placeholder','ects':0,'offerings':{}}]
                 load(s);page.locator('[data-nav="semesters"]').click()
-                answers=iter(['Hypothetical completion','TEST-HYP','2026W','6','core','completed'])
-                page.on('dialog',dialog);page.locator('[data-action="manual-course"]').click()
+                page.locator('[data-action="manual-course"]').click()
+                form=page.locator('#module-edit-form');form.locator('[name="title"]').fill('Hypothetical completion');form.locator('[name="number"]').fill('TEST-HYP');form.locator('[name="ects"]').fill('6');form.locator('[name="role"]').select_option('core');form.locator('[name="status"]').select_option('completed');form.locator('button[type="submit"]').click()
                 page.wait_for_function("async()=>((await (await fetch('/api/state')).json()).plans[0].courses.length===1)")
                 assert server.store.get()['history']==[];assert server.store.get()['actualPlan']['courses']==[]
-                page.remove_listener('dialog',dialog)
                 # Editing a real completion back to planned removes stale history.
                 s=initial_state();s['language']='en';c=course('core',6,status='completed');s['actualPlan']['courses']=[c];s['history']=[dict(c,locked=True)]
                 load(s);page.locator('[data-nav="semesters"]').click()
-                answers=iter([c['title'],c['number'],'2026W','6','core','planned'])
-                page.on('dialog',dialog);page.locator('[data-action="edit-course"]').click()
+                page.locator('[data-action="edit-course"]').click();page.locator('#module-edit-form [name="status"]').select_option('planned');page.locator('#module-edit-form button[type="submit"]').click()
                 page.wait_for_function("async()=>((await (await fetch('/api/state')).json()).history.length===0)")
                 assert server.store.get()['actualPlan']['courses'][0]['status']=='planned'
                 assert not errors,errors
