@@ -133,7 +133,8 @@
       typeof p.weight!=='number'||!Number.isFinite(p.weight)||p.weight<=0))return null;
     const weight=parts.reduce((s,p)=>s+p.weight,0);
     if(!Number.isFinite(weight))return null;
-    return parts.reduce((s,p)=>s+p.value*(p.weight/weight),0);
+    const bonus=entry.bonus??0;if(typeof bonus!=='number'||!Number.isFinite(bonus)||Math.abs(bonus)>6)return null;
+    return Math.min(6,Math.max(1,parts.reduce((s,p)=>s+p.value*(p.weight/weight),0)+bonus));
   }
   function calculateFinalGrade(entries,rules={}) {
     const weights={core:rules.gradeWeights?.coreCourse??2,specialisation:rules.gradeWeights?.specialisationLecture??1,

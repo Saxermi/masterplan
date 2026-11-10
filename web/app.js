@@ -8,7 +8,7 @@ const eligibleCoreSelection = key => key === 'eligible-core-all' || (guidelines?
 const specialisations = ['Astrophysics','Biology','Chemistry','Computational Finance','Electromagnetics','Fluid Dynamics','Geophysics','Physics','Physics of the Atmosphere','Robotics','Systems and Control'];
 const roleList = ['core','specialisation','specialisation-seminar','elective','case','project','sip','thesis','scientific','extra','requirement'];
 const roles = {core:['Core Course','Core Course'],specialisation:['Spezialisierungsvorlesung','Specialisation lecture'],'specialisation-seminar':['Spezialisierungsseminar','Specialisation seminar'],elective:['Elective','Elective'],case:['Case Study','Case study'],project:['Semesterprojekt','Semester project'],sip:['Science in Perspective','Science in Perspective'],thesis:['Masterarbeit','Master thesis'],scientific:['Scientific Works (0 ECTS)','Scientific Works (0 ECTS)'],extra:['Nur besuchen · 0 ECTS','Attend only · 0 ECTS'],requirement:['Zulassungsauflage','Additional requirement']};
-const navItems = [['dashboard','⌂','Übersicht','Dashboard'],['schedule','▦','Stundenplan','Timetable'],['semesters','▤','Semesterplanung','Semester planning'],['plans','▧','Studienpläne','Study plans'],['catalog','⌕','Modulkatalog','Course catalogue'],['requirements','✓','Studienregeln','Requirements'],['grades','∑','Noten (separat)','Grades (private)'],['settings','⚙','Einstellungen','Settings']];
+const navItems = [['dashboard','⌂','Übersicht','Dashboard'],['schedule','▦','Stundenplan','Timetable'],['semesters','▤','Semesterplanung','Semester planning'],['plans','▧','Studienpläne','Study plans'],['catalog','⌕','Modulkatalog','Course catalogue'],['requirements','✓','Studienregeln','Requirements'],['grades','∑','Noten (separat)','Grades (private)'],['simulation','◇','Studiensimulation','Study simulation'],['settings','⚙','Einstellungen','Settings']];
 const tr = (de,en) => state.language === 'en' ? en : de;
 const trRole = r => (roles[r] || roles.extra)[state.language === 'en' ? 1 : 0];
 const semName = x => x ? `${x.endsWith('S')?'FS':'HS'} ${x.slice(0,4)}` : '—';
@@ -95,7 +95,7 @@ async function runCatalogSearch(offset=0) {
   }
 }
 function updateStatus(msg) {$('#save-status').textContent=msg;}
-function changePage(next) {page=next;gradesCache=null;gradesPassword=null;$('#sidebar').classList.remove('open');render();if(next==='settings'){loadFolder();refreshDumpStatus();}}
+function changePage(next) {page=next;gradeDraft=null;if(!['grades','simulation'].includes(next)){gradesCache=null;gradesPassword=null;}$('#sidebar').classList.remove('open');render();if(next==='settings'){loadFolder();refreshDumpStatus();}}
 function pill(text,type='') {return `<span class="pill ${type}">${escape(text)}</span>`;}
 function button(text,action,extra='',cls='smallbtn'){return `<button class="${cls}" data-action="${action}" ${extra}>${text}</button>`;}
 function pageHeader(title,desc,action='') {return `<div class="row between wrap" style="margin-bottom:22px"><div><h1 class="page-title">${title}</h1><p class="subtitle" style="margin-bottom:0">${desc}</p></div>${action}</div>`;}
@@ -120,7 +120,7 @@ function render() {
   $('#theme-toggle').textContent=state.theme==='dark'?'☀':'☾';
   $('#nav').innerHTML=navItems.map(([key,icon,de,en])=>`<button class="nav-item ${key===page?'active':''}" data-nav="${key}"><span>${icon}</span><span>${escape(tr(de,en))}</span></button>`).join('');
   $('#top-title').textContent=page==='course-details'?tr('Moduldetails','Course details'):(navItems.find(x=>x[0]===page)||navItems[0])[state.language==='en'?3:2];
-  const renderers = {dashboard:dashboard,schedule:schedule,semesters:semesters,plans:plans,catalog:catalog,requirements:requirements,grades:grades,settings:settings,'course-details':courseDetails};
+  const renderers = {dashboard:dashboard,schedule:schedule,semesters:semesters,plans:plans,catalog:catalog,requirements:requirements,grades:grades,simulation:grades,settings:settings,'course-details':courseDetails};
   $('#app').innerHTML=(renderers[page]||dashboard)();
 
   refreshAssignmentChoices();
@@ -407,24 +407,105 @@ function requirements() {
 }
 
 function grades() {
-  return `${pageHeader(tr('Private Noten','Private grades'),tr('Noten erscheinen ausschließlich hier. Daten werden mit deinem Passwort im Browser verschlüsselt.','Grades appear only here. Data is encrypted in your browser using your password.'))}<div class="card" style="max-width:820px"><div class="row between"><h2 class="section-title">🔒 ${tr('Geschützter Notenbereich','Protected grade vault')}</h2>${gradesCache?button(tr('Sperren','Lock'),'lock-grades'):''}</div>${gradesCache?renderGradeEditor():`<p class="muted small">${tr('Passwort eingeben, um die verschlüsselten Noten zu öffnen oder erstmals anzulegen. Ohne Passwort ist keine Wiederherstellung möglich.','Enter a password to unlock or create the encrypted grades. Recovery is impossible without the password.')}</p><form id="grades-unlock-form"><div class="field"><label>${tr('Passwort','Password')}</label><input name="password" type="password" required minlength="8" autocomplete="off" placeholder="${tr('Mindestens 8 Zeichen','At least 8 characters')}"></div><div style="margin-top:13px"><button class="button" type="submit">${tr('Öffnen / erstellen','Unlock / create')}</button></div></form>`}</div>`;
+  return `${pageHeader(page==='simulation'?tr('Studiensimulation','Study simulation'):tr('Private Noten','Private grades'),tr('Noten und Simulationen bleiben im passwortverschlüsselten Notenspeicher.','Grades and simulations remain in the password-encrypted grade vault.'))}<div class="card" style="max-width:820px"><div class="row between"><h2 class="section-title">🔒 ${tr('Geschützter Notenbereich','Protected grade vault')}</h2>${gradesCache?button(tr('Sperren','Lock'),'lock-grades'):''}</div>${gradesCache?(page==='simulation'?simulationPanel():renderGradeEditor()):`<p class="muted small">${tr('Passwort eingeben, um die verschlüsselten Noten zu öffnen oder erstmals anzulegen. Ohne Passwort ist keine Wiederherstellung möglich.','Enter a password to unlock or create the encrypted grades. Recovery is impossible without the password.')}</p><form id="grades-unlock-form"><div class="field"><label>${tr('Passwort','Password')}</label><input name="password" type="password" required minlength="8" autocomplete="off" placeholder="${tr('Mindestens 8 Zeichen','At least 8 characters')}"></div><div style="margin-top:13px"><button class="button" type="submit">${tr('Öffnen / erstellen','Unlock / create')}</button></div></form>`}</div>`;
 }
 function moduleGrade(entry){return MasterPlanRules.moduleGrade(entry);}
 function gradeCategory(entry){return entry.category==='specialisation'&&entry.subtype==='seminar'?'excluded':['core','specialisation','elective','thesis'].includes(entry.category)?entry.category:'excluded';}
 function calculateFinalGrade(entries){return MasterPlanRules.calculateFinalGrade(entries,guidelines||{});}
 
-function renderGradeEditor() {
-  const entries=gradesCache.entries||[],final=calculateFinalGrade(entries),c=final.counts;
-  return `<div class="note good"><strong>${tr('Offizielle MSc-CSE-Schlussnotenformel (Guidelines Seite 10)','Official MSc CSE final grade formula (guidelines p. 10)')}</strong>
-    <p class="small">(2 × Core 1 + 2 × Core 2 + Σ 4 ${tr('Spezialisierungsnoten (je Gewicht 1)','specialisation grades (weight 1 each)')} + Σ Electives + 4 × Master Thesis) ÷ (12 + ${tr('Anzahl Electives','number of electives')})</p>
-    <p class="hint">${tr('Jede der vier Spezialisierungsvorlesungen und jedes gewählte Elective hat Gewicht 1. Kein ECTS-gewichteter Abschlussdurchschnitt.','Each of the four specialisation lectures and each included elective has weight 1. No ECTS-weighted graduation average.')}</p></div>
-    <div class="card spaced"><div class="row between"><div><h2 class="section-title">${tr('Berechnete Schlussnote','Calculated final grade')}</h2><div class="metric">${final.complete&&final.value!==null?final.value.toFixed(3):'—'}</div></div>${pill(final.complete?tr('Formel vollständig','All categories complete'):tr('Noch unvollständig','Not complete'),final.complete?'green':'orange')}</div>
-      <p class="small muted">Core: ${c.core}/2 · ${tr('Spezialisierung','Specialisation')}: ${c.specialisation}/4 · Electives: ${c.elective}/2+ · Thesis: ${c.thesis}/1</p>
-      <p class="hint">${tr('Die Schlussnote wird erst angezeigt, wenn genau zwei Core-Kurse, vier Spezialisierungsvorlesungen, mindestens zwei Electives und eine Masterarbeit markiert sind. Nicht-angerechnete Kurse bleiben ausgeschlossen.','The final grade is shown only with exactly two core grades, four specialisation lectures, at least two electives and one master thesis. Non-credit courses are excluded.')}</p></div>
-    <div class="card spaced"><h2 class="section-title">${tr('Private Modulnoten','Private course grades')}</h2><div class="table-wrap"><table><thead><tr><th>${tr('Kurs','Course')}</th><th>${tr('Kategorie','Category')}</th><th>${tr('Teilleistungen','Components')}</th><th>${tr('Modulnote','Course grade')}</th><th>${tr('Abschlussgewicht','Final weight')}</th><th></th></tr></thead><tbody>
-    ${entries.map((e,i)=>{const category=gradeCategory(e),weight={core:2,specialisation:1,elective:1,thesis:4,excluded:0}[category];return `<tr><td>${escape(e.name)}</td><td>${escape(trRole(e.category==='specialisation'&&e.subtype==='seminar'?'specialisation-seminar':category==='excluded'?'extra':category))}</td><td>${(e.parts||[]).map(x=>`${escape(x.name)}: ${formatNum(x.value)} (${formatNum(x.weight)}%)`).join('<div></div>')}</td><td>${moduleGrade(e)?.toFixed(2)||'—'}</td>
-      <td>${e.countsForFinal===false?0:weight}</td><td>${button(tr('Bearbeiten','Edit'),'grade-edit',`data-index="${i}"`)}</td></tr>`;}).join('')}
-    </tbody></table></div><div class="actions" style="margin-top:18px">${button('+ '+tr('Modulnote','Course grade'),'grade-add','','button')}${button(tr('Verschlüsselt speichern','Save encrypted'),'grade-save','','button')}</div></div>`;
+let gradeDraft=null,activeSimulation=null;
+const privatePages=['grades','simulation'];
+function privateNumber(v){return v===''?null:Number(v);}
+function gradeMetric(v){return v==null?'—':Number(v).toFixed(2);}
+function gradeCategoryChoice(e){return e.category==='specialisation'&&e.subtype==='seminar'?'specialisation-seminar':e.category;}
+function gradeFinalCard(entries,simulated=false){
+  const final=calculateFinalGrade(simulated?MasterPlanGrades.projectedEntries(entries):entries);
+  return `<div class="card spaced" id="private-final"><h2>${simulated?tr('Simulierte Gesamtnote','Simulated final grade'):tr('Gesamtnote aus echten Ergebnissen','Final grade from actual results')}</h2><strong class="metric">${final.complete?gradeMetric(final.value):'—'}</strong>
+    <p>${tr('Core-Kurse','Core courses')}: ${final.counts.core}/2 · ${tr('Spezialisierungsvorlesungen','Specialisation lectures')}: ${final.counts.specialisation}/4 · Electives: ${final.counts.elective}/2+ · ${tr('Masterarbeit','Master thesis')}: ${final.counts.thesis}/1</p>
+    <p class="hint">${tr('Gewichte: Core je 2, vier Spezialisierungsvorlesungen je 1, jedes Elective 1, Masterarbeit 4. Seminare sind ausgeschlossen. Fehlende oder nicht bestandene Leistungen ergeben keine vollständige Schlussnote.','Weights: each core 2, each of four specialisation lectures 1, each elective 1, thesis 4. Seminars are excluded. Missing or failed results do not produce a complete final grade.')}</p></div>`;
+}
+function forecastHtml(entry){
+  const f=MasterPlanGrades.forecast(entry,entry.targetGrade??4);
+  if(!f.valid)return `<p role="status">${tr('Bitte gültige Noten von 1 bis 6 und positive Gewichtungen eingeben.','Enter valid grades from 1 to 6 and positive weights.')}</p>`;
+  return `<p>${tr('Bekanntes Gewicht','Known weight')}: ${formatNum(f.knownWeight)} / ${formatNum(f.weight)} · ${tr('Schnitt bekannter Teilnoten','Average of known components')}: ${gradeMetric(f.knownAverage)}</p>
+    <p>${tr('Modulnote (nur echte Ergebnisse)','Module grade (actual results only)')}: <strong>${gradeMetric(f.value)}</strong> · ${tr('Mit Annahmen','With assumptions')}: <strong data-projected-grade>${gradeMetric(f.projected)}</strong></p>
+    <p>${tr('Möglicher Bereich für offene Leistungen (Noten 1–6)','Possible range for remaining assessments (grades 1–6)')}: ${gradeMetric(f.min)}–${gradeMetric(f.max)}</p>
+    ${f.required!=null?`<p>${tr('Benötigter Schnitt der offenen Leistungen für die Zielnote','Required average on remaining assessments for the target grade')}: <strong data-required-grade>${gradeMetric(f.required)}</strong> ${f.reachable===false?tr('(mit maximal 6 nicht erreichbar)','(not achievable with a maximum of 6)'):f.alreadySecured?tr('(auch mit Note 1 bereits gesichert)','(already secured even with grade 1)'):''}</p>`:''}
+    ${Math.abs(f.weight-100)>1e-8?`<p class="note">${tr('Die Gewichtungen werden relativ normalisiert; für Prozentangaben sollten sie zusammen 100 ergeben.','Weights are normalized relatively; percentage weights should total 100.')}</p>`:''}`;
+}
+function draftEditor(){
+  if(!gradeDraft)return '';
+  const e=gradeDraft.entry,sim=gradeDraft.kind==='simulation';
+  const courseOptions=MasterPlanGrades.scenarioCourses(actual(),state.history||[]);
+  return `<div class="card spaced" id="grade-editor"><h2>${sim?tr('Notenannahmen bearbeiten','Edit grade assumptions'):tr('Modulnote und Teilnoten bearbeiten','Edit module grade and components')}</h2>
+    <form id="grade-entry-form"><div class="filterbar">
+    ${!sim?`<label>${tr('Modul aus tatsächlichem Studium (optional)','Course from actual studies (optional)')}<select data-grade-link><option value="">${tr('Manueller Eintrag','Manual entry')}</option>${courseOptions.map(c=>`<option value="${attrs(c.id)}" ${e.courseId===c.id?'selected':''}>${escape(c.title)}</option>`).join('')}</select></label>`:''}
+    <label>${tr('Modultitel','Course title')}<input data-grade-input="name" value="${attrs(e.name||'')}" required ${sim?'readonly':''}></label>
+    <label>${tr('Kursnummer (optional)','Course number (optional)')}<input data-grade-input="number" value="${attrs(e.number||'')}" ${sim?'readonly':''}></label>
+    <label>${tr('Notenkategorie','Grade category')}<select data-grade-input="category" ${sim?'disabled':''}>${['core','specialisation','specialisation-seminar','elective','thesis','excluded'].map(r=>`<option value="${r}" ${r===gradeCategoryChoice(e)?'selected':''}>${r==='excluded'?tr('Nicht in Schlussnote','Exclude from final grade'):escape(trRole(r))}</option>`).join('')}</select></label></div>
+    <label class="check-row"><input type="checkbox" data-grade-input="countsForFinal" ${e.countsForFinal!==false?'checked':''} ${sim?'disabled':''}>${tr('Für Schlussnote auswählen','Select for final grade')}</label>
+    ${e.actualMatched?`<p class="note">${tr('Echte Ergebnisse aus dem tatsächlichen Studium werden übernommen. Bekannte Teilnoten und ihre Gewichtungen sind hier geschützt.','Actual results from real studies are inherited. Known grades and their assessment weights are protected here.')}</p>`:''}
+    <div class="table-wrap"><table><thead><tr><th>${tr('Teilleistung','Assessment')}</th><th>${tr('Gewicht (%)','Weight (%)')}</th><th>${tr('Echte Note','Actual grade')}</th><th>${tr('Annahme für offene Leistung','Assumption for pending assessment')}</th><th></th></tr></thead><tbody>
+    ${e.parts.map((p,i)=>`<tr><td><input aria-label="${tr('Bezeichnung','Name')}" data-grade-part="${i}" data-grade-input="name" value="${attrs(p.id==='exam'&&p.name==='Exam'?tr('Prüfung','Exam'):p.name)}" ${p.structureLocked?'readonly':''}></td><td><input aria-label="${tr('Gewicht','Weight')}" type="number" min="0.001" step="any" data-grade-part="${i}" data-grade-input="weight" value="${attrs(p.weight)}" ${p.structureLocked?'readonly':''}></td>
+    <td><input aria-label="${tr('Echte Note','Actual grade')}" type="number" min="1" max="6" step="any" data-grade-part="${i}" data-grade-input="value" value="${attrs(p.value??'')}" ${sim?'readonly':''}></td>
+    <td><input aria-label="${tr('Annahme','Assumption')}" type="number" min="1" max="6" step="any" data-grade-part="${i}" data-grade-input="estimate" value="${attrs(p.estimate??'')}" ${p.actualLocked||p.value!=null?'disabled':''}></td><td>${!p.structureLocked?button('×','grade-part-remove',`data-index="${i}" aria-label="${tr('Teilleistung entfernen','Remove assessment')}"`):'🔒'}</td></tr>`).join('')}</tbody></table></div>
+    ${!e.actualMatched?button('+ '+tr('Teilleistung','Assessment'),'grade-part-add'):''}
+    <div class="filterbar"><label>${tr('Additiver Notenbonus (z. B. +0,25)','Additive grade bonus (e.g. +0.25)')}<input type="number" step="any" min="-6" max="6" data-grade-input="bonus" value="${attrs(e.bonus??0)}" ${e.bonusLocked?'readonly':''}></label>
+    <label>${tr('Gewünschte Modulnote','Target module grade')}<input type="number" min="1" max="6" step="any" data-grade-input="targetGrade" value="${attrs(e.targetGrade??4)}"></label></div>
+    <p class="hint">${tr('Echte Noten nur für bereits bewertete Leistungen eintragen. Offene Noten leer lassen und separat als Annahme testen. Der Bonus wird nach dem gewichteten Durchschnitt addiert; maximal Note 6.','Enter actual grades only for assessed work. Leave pending grades blank and test them separately as assumptions. The bonus is added after the weighted average; grades are capped at 6.')}</p>
+    <div id="grade-preview" aria-live="polite">${forecastHtml(e)}</div><div class="actions"><button class="button" type="submit">${tr('Übernehmen','Apply')}</button>${button(tr('Abbrechen','Cancel'),'grade-draft-cancel')}</div></form></div>`;
+}
+function renderGradeEditor(){
+  const entries=gradesCache.entries;
+  return `${gradeFinalCard(entries)}<p class="note">${tr('Annahmen sind keine echten Ergebnisse. Alle Änderungen erst mit „Verschlüsselt speichern“ dauerhaft sichern.','Assumptions are not actual results. Save changes permanently using Save encrypted.')}</p>
+    <div class="actions">${button('+ '+tr('Modulnote','Course grade'),'grade-add','','button')}${button(tr('Verschlüsselt speichern','Save encrypted'),'grade-save','','button')}</div>
+    ${entries.map((e,i)=>`<div class="card spaced"><h3>${escape(e.name)}</h3><p>${tr('Modulnote','Module grade')}: ${gradeMetric(moduleGrade(e))} · ${tr('Prognose','Projection')}: ${gradeMetric(MasterPlanGrades.forecast(e).projected)}</p>${button(tr('Bearbeiten','Edit'),'grade-edit',`data-index="${i}"`)}${button(tr('Entfernen','Remove'),'grade-delete',`data-index="${i}"`)}</div>`).join('')}${draftEditor()}`;
+}
+function simulationEntries(s){
+  const plan=allPlans().find(p=>p.id===s.planId);if(!plan)return [];
+  return MasterPlanGrades.scenarioCourses(plan,state.history||[]).map(c=>MasterPlanGrades.simulationEntry(c,s.entries[MasterPlanGrades.key(c)],gradesCache.entries,s.planId==='actual'));
+}
+function simulationPanel(){
+  const sims=gradesCache.simulations;
+  const selected=sims.find(s=>s.id===activeSimulation)||sims[0];activeSimulation=selected?.id||null;
+  const entries=selected?simulationEntries(selected):[];
+  return `<p class="note">${tr('Simulationen sind hypothetisch und ändern weder echte Noten noch Semesterzuweisungen. Beim tatsächlichen Studienplan werden eindeutig zugeordnete echte Ergebnisse automatisch übernommen.','Simulations are hypothetical and change neither actual grades nor course allocations. Selecting actual studies automatically inherits unambiguously linked real results.')}</p>
+    <form id="simulation-create-form" class="card"><label>${tr('Neues Notenszenario','New grade scenario')}<input name="name" required maxlength="150" placeholder="${tr('z. B. Optimistisch','e.g. Optimistic')}"></label><button class="button" type="submit">${tr('Szenario erstellen','Create scenario')}</button></form>
+    <div class="actions">${button(tr('Verschlüsselt speichern','Save encrypted'),'grade-save','','button')}</div>
+    ${selected?`<div class="card spaced"><label>${tr('Notenszenario','Grade scenario')}<select id="simulation-select">${sims.map(s=>`<option value="${attrs(s.id)}" ${s.id===selected.id?'selected':''}>${escape(s.name)}</option>`).join('')}</select></label>
+    <label>${tr('Semesterplanung auswählen','Choose study plan')}<select id="simulation-plan">${!allPlans().some(p=>p.id===selected.planId)?`<option selected value="">${tr('Plan wurde entfernt – bitte auswählen','Plan was removed – choose another')}</option>`:''}${allPlans().map(p=>`<option value="${attrs(p.id)}" ${p.id===selected.planId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label>${button(tr('Szenario duplizieren','Duplicate scenario'),'simulation-duplicate')}${button(tr('Szenario löschen','Delete scenario'),'simulation-delete')}</div>
+    ${gradeFinalCard(entries,true)}
+    ${entries.map(e=>`<div class="card spaced"><h3>${escape(e.name)}</h3><p>${escape(trRole(MasterPlanRules.allocationRole({role:e.category,subtype:e.subtype})))}</p>${e.actualMatched?pill(tr('Echte Ergebnisse übernommen','Actual results inherited'),'green'):''}<p>${tr('Simulierte Modulnote','Simulated module grade')}: ${gradeMetric(MasterPlanGrades.forecast(e).projected)}</p>${button(tr('Teilnoten / Annahmen','Components / assumptions'),'simulation-edit',`data-key="${attrs(MasterPlanGrades.key({...e,id:e.courseId}))}"`)}</div>`).join('')||`<p>${tr('Dem gewählten Plan sind noch keine anrechenbaren Module zugewiesen.','The selected plan has no credit-bearing courses assigned yet.')}</p>`}${draftEditor()}`:''}`;
+}
+async function privateAction(action,element){
+  if(action==='grade-add'||action==='grade-edit'){
+    const index=action==='grade-edit'?Number(element.dataset.index):-1;
+    gradeDraft={kind:'real',index,entry:index>=0?structuredClone(gradesCache.entries[index]):{name:'',category:'core',countsForFinal:true,bonus:0,bonusKnown:false,parts:[{id:id(),name:tr('Zwischenprüfung','Midterm'),weight:20,value:null,estimate:null},{id:id(),name:tr('Schlussprüfung','Final exam'),weight:80,value:null,estimate:null}]}};
+  }else if(action==='grade-draft-cancel'){gradeDraft=null;}
+  else if(action==='grade-part-add'){gradeDraft.entry.parts.push({id:id(),name:tr('Neue Teilleistung','New assessment'),weight:10,value:null,estimate:null});}
+  else if(action==='grade-part-remove'){gradeDraft.entry.parts.splice(Number(element.dataset.index),1);}
+  else if(action==='grade-delete'){gradesCache.entries.splice(Number(element.dataset.index),1);gradeDraft=null;}
+  else if(action==='simulation-edit'){
+    const s=gradesCache.simulations.find(s=>s.id===activeSimulation),entry=simulationEntries(s).find(e=>MasterPlanGrades.key({...e,id:e.courseId})===element.dataset.key);
+    gradeDraft={kind:'simulation',scenarioId:s.id,key:element.dataset.key,entry:structuredClone(entry)};
+  }else if(action==='simulation-duplicate'){
+    const s=gradesCache.simulations.find(s=>s.id===activeSimulation),copy=structuredClone(s);copy.id=id();copy.name+=' '+tr('(Kopie)','(copy)');gradesCache.simulations.push(copy);activeSimulation=copy.id;gradeDraft=null;
+  }else if(action==='simulation-delete'){gradesCache.simulations=gradesCache.simulations.filter(s=>s.id!==activeSimulation);activeSimulation=null;gradeDraft=null;}
+  render();$('#grade-editor')?.scrollIntoView({block:'start'});
+}
+function applyGradeDraft(){
+  const e=gradeDraft.entry;
+  if(!e.name.trim()||!MasterPlanGrades.forecast(e).valid)throw Error(tr('Bitte Titel, Noten und Gewichte prüfen.','Check title, grades and weights.'));
+  if(gradeDraft.kind==='real'){
+    const entry=structuredClone(e);entry.parts=entry.parts.map((p,i)=>({...p,id:p.id||`part-${i}`}));
+    if(gradeDraft.index<0)gradesCache.entries.push(entry);else gradesCache.entries[gradeDraft.index]=entry;
+  }else{
+    const s=gradesCache.simulations.find(s=>s.id===gradeDraft.scenarioId);
+    // Persist assumptions only; actual marks are read afresh from the real vault on every render.
+    const entry=structuredClone(e);entry.parts=entry.parts.map(p=>({...p,value:null,actualLocked:undefined,structureLocked:undefined}));
+    delete entry.actualMatched;delete entry.bonusLocked;s.entries[gradeDraft.key]=entry;
+  }
+  gradeDraft=null;render();notify(tr('Im Notenspeicher vorgemerkt – bitte verschlüsselt speichern.','Updated in memory – please save encrypted.'));
 }
 
 function settings() {
@@ -559,8 +640,8 @@ async function executeAction(action,element) {
   if(action==='check-dump'){try{dumpStatus=await request('/api/vvz/dump/check','POST',{});render();refreshDumpStatus();notify(tr('VVZ-Abgleich gestartet.','VVZ sync started.'));}catch(e){notify(e.message);}return;}
   if(action==='move-folder'||action==='open-folder'){const folder=prompt(tr('Absoluter lokaler Ordnerpfad (kann im Cloud-Sync-Ordner liegen)','Absolute local folder path (may reside in cloud-synced folder)'),$('#folder-label')?.textContent||'');if(!folder)return;try{const x=await request('/api/storage','POST',{mode:action==='move-folder'?'move':'open',folder});state=x.state;notify(tr('Datenordner aktualisiert.','Data folder updated.'));render();loadFolder();}catch(e){notify(e.message);}return;}
   if(action==='export-data'){const b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(b),a=document.createElement('a');a.href=url;a.download='masterplan-export.json';a.click();URL.revokeObjectURL(url);return;}
-  if(action==='lock-grades'){gradesCache=null;gradesPassword=null;return render();}
-  if(action==='grade-add'||action==='grade-edit'){const index=action==='grade-edit'?Number(element.dataset.index):-1;const prev=index>=0?gradesCache.entries[index]:null;const name=prompt(tr('Modulname','Course name'),prev?.name||'');if(!name)return;const old=(prev?.parts||[]).map(p=>`${p.name},${p.value},${p.weight}`).join('\n');const raw=prompt(tr('Teilleistungen: Name, Note, Gewicht in % (eine Zeile pro Teilleistung)','Components: name, grade, weight in % (one line each)'),old||'Exam,5.0,100');if(raw===null)return;const parts=[];for(const line of raw.split('\n')){const [name,value,weight]=line.split(',').map(x=>x.trim());if(!name||safe(value)<1||safe(value)>6||safe(weight)<=0)return notify(tr('Ungültige Note (1–6) oder Gewichtung.','Invalid grade (1–6) or weight.'));parts.push({name,value:Number(value),weight:Number(weight)});}const category=prompt(tr('Abschlusskategorie: core, specialisation, specialisation-seminar (Spezialisierungsseminar), elective, thesis oder excluded','Graduation category: core, specialisation, specialisation-seminar (Specialisation seminar), elective, thesis or excluded'),prev?.category==='specialisation'&&prev?.subtype==='seminar'?'specialisation-seminar':prev?.category||'core');if(category===null)return;if(!['core','specialisation','specialisation-seminar','elective','thesis','excluded'].includes(category))return notify(tr('Ungültige Abschlusskategorie.','Invalid graduation category.'));const subtype=category==='specialisation-seminar'?'seminar':category==='specialisation'?prompt(tr('Art: lecture oder seminar','Type: lecture or seminar'),prev?.subtype||'lecture'):null;if(category==='specialisation'&&!['lecture','seminar'].includes(subtype))return notify(tr('Ungültige Spezialisierungsart.','Invalid specialisation type.'));const record={...prev,name,parts,category:category==='specialisation-seminar'?'specialisation':category,subtype:subtype||undefined,countsForFinal:category!=='excluded'&&subtype!=='seminar'};if(index<0)gradesCache.entries.push(record);else gradesCache.entries[index]=record;return render();}
+  if(action==='lock-grades'){gradeDraft=null;gradesCache=null;gradesPassword=null;return render();}
+  if(['grade-add','grade-edit','grade-delete','grade-draft-cancel','grade-part-add','grade-part-remove','simulation-edit','simulation-duplicate','simulation-delete'].includes(action))return privateAction(action,element);
   if(action==='grade-save'){try{await saveGrades();notify(tr('Noten verschlüsselt gespeichert.','Grades encrypted and saved.'));}catch(e){notify(e.message);}return;}
   if(action==='set-de'||action==='set-en')return save(s=>s.language=action==='set-de'?'de':'en');
   if(action==='set-light'||action==='set-dark')return save(s=>s.theme=action==='set-light'?'light':'dark');
@@ -583,8 +664,10 @@ async function loadFolder(){try{const x=await request('/api/storage');const e=$(
 function base64(bytes){let b='';for(const x of bytes)b+=String.fromCharCode(x);return btoa(b);}
 function unbase64(x){return Uint8Array.from(atob(x),x=>x.charCodeAt(0));}
 async function gradeKey(password,salt){const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
-async function unlockGrades(password){if(!globalThis.crypto?.subtle)throw Error(tr('Verschlüsselung benötigt einen sicheren Browserkontext.','Encryption requires a secure browser context.'));const payload=(await request('/api/grades')).encrypted;if(!payload){gradesCache={entries:[]};gradesPassword=password;return;}const salt=unbase64(payload.salt),iv=unbase64(payload.iv);const key=await gradeKey(password,salt);let plaintext;try{plaintext=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,unbase64(payload.ciphertext));}catch{throw Error(tr('Falsches Passwort oder beschädigte Daten.','Wrong password or corrupt data.'));}const decoded=JSON.parse(new TextDecoder().decode(plaintext));if(!Array.isArray(decoded.entries))throw Error('Invalid grades data');gradesCache=decoded;gradesPassword=password;}
-async function saveGrades(){if(!gradesCache||!gradesPassword)throw Error('Vault locked');const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await gradeKey(gradesPassword,salt);const plaintext=new TextEncoder().encode(JSON.stringify(gradesCache));const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plaintext);await request('/api/grades','POST',{salt:base64(salt),iv:base64(iv),ciphertext:base64(new Uint8Array(ciphertext))});}
+async function unlockGrades(password){if(!globalThis.crypto?.subtle)throw Error(tr('Verschlüsselung benötigt einen sicheren Browserkontext.','Encryption requires a secure browser context.'));const payload=(await request('/api/grades')).encrypted;if(!payload){gradesCache={entries:[],simulations:[]};gradesPassword=password;return;}const salt=unbase64(payload.salt),iv=unbase64(payload.iv);const key=await gradeKey(password,salt);let plaintext;try{plaintext=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,unbase64(payload.ciphertext));}catch{throw Error(tr('Falsches Passwort oder beschädigte Daten.','Wrong password or corrupt data.'));}const decoded=JSON.parse(new TextDecoder().decode(plaintext));gradesCache=MasterPlanGrades.validateVault(decoded);gradesPassword=password;}
+let gradeSaveQueue=Promise.resolve();
+function saveGrades(){if(!gradesCache||!gradesPassword)return Promise.reject(Error('Vault locked'));const snapshot=structuredClone(gradesCache),password=gradesPassword;const task=()=>persistGrades(snapshot,password);gradeSaveQueue=gradeSaveQueue.then(task,task);return gradeSaveQueue;}
+async function persistGrades(snapshot,password){const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await gradeKey(password,salt);const plaintext=new TextEncoder().encode(JSON.stringify(snapshot));const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plaintext);await request('/api/grades','POST',{salt:base64(salt),iv:base64(iv),ciphertext:base64(new Uint8Array(ciphertext))});}
 
 addEventListener('click',async event=>{const nav=event.target.closest('[data-nav]');if(nav)return changePage(nav.dataset.nav);const action=event.target.closest('[data-action]');if(action){event.preventDefault();try{await executeAction(action.dataset.action,action);}catch(e){notify(e.message);}return;}});
 addEventListener('change',async event=>{const e=event.target;
@@ -639,3 +722,28 @@ addEventListener('dragover',event=>{if(draggedScheduleCourse&&event.target.close
 addEventListener('drop',event=>{const cell=event.target.closest('.daycell');if(!cell||!draggedScheduleCourse)return;event.preventDefault();fillScheduleSlot(cell.dataset.day,cell.dataset.start,draggedScheduleCourse);draggedScheduleCourse=null;});
 addEventListener('dragend',()=>draggedScheduleCourse=null);
 addEventListener('keydown',event=>{if((event.key==='Enter'||event.key===' ')&&event.target.matches('.daycell')){event.preventDefault();fillScheduleSlot(event.target.dataset.day,event.target.dataset.start);}});
+
+addEventListener('input',event=>{
+  const e=event.target;if(!e.matches('[data-grade-input]')||!gradeDraft)return;
+  const field=e.dataset.gradeInput,index=e.dataset.gradePart;
+  if(index!=null){const part=gradeDraft.entry.parts[Number(index)];if(!part)return;
+    if(gradeDraft.kind==='simulation'&&(field==='value'||part.structureLocked&&['name','weight'].includes(field)||part.actualLocked))return;
+    part[field]=['value','estimate','weight'].includes(field)?privateNumber(e.value):e.value;
+    if(field==='value'){const estimate=e.closest('tr').querySelector('[data-grade-input="estimate"]');if(estimate)estimate.disabled=part.value!=null;}
+  }else if(field==='category'){const category=MasterPlanRules.allocationCategory(e.value);gradeDraft.entry.category=category.role;gradeDraft.entry.subtype=category.subtype;gradeDraft.entry.countsForFinal=e.value!=='excluded'&&e.value!=='specialisation-seminar';}
+  else if(field==='countsForFinal')gradeDraft.entry.countsForFinal=e.checked;
+  else if(field==='bonus'&&gradeDraft.entry.bonusLocked)return;
+  else {gradeDraft.entry[field]=['bonus','targetGrade'].includes(field)?privateNumber(e.value):e.value;if(field==='bonus'&&gradeDraft.kind==='real')gradeDraft.entry.bonusKnown=true;}
+  const preview=$('#grade-preview');if(preview)preview.innerHTML=forecastHtml(gradeDraft.entry);
+});
+addEventListener('change',event=>{
+  const e=event.target;
+  if(e.matches('[data-grade-link]')&&gradeDraft){const c=allCourses(actual()).find(c=>c.id===e.value);if(c){gradeDraft.entry={...gradeDraft.entry,...MasterPlanGrades.baseEntry(c),parts:gradeDraft.entry.parts,bonus:gradeDraft.entry.bonus??0};render();}else{delete gradeDraft.entry.courseId;delete gradeDraft.entry.number;}}
+  if(e.id==='simulation-select'){activeSimulation=e.value;gradeDraft=null;render();}
+  if(e.id==='simulation-plan'){const s=gradesCache?.simulations.find(s=>s.id===activeSimulation);if(s){s.planId=e.value;gradeDraft=null;render();}}
+});
+addEventListener('submit',event=>{
+  const form=event.target;
+  if(form.id==='simulation-create-form'){event.preventDefault();const name=formVal(form,'name');if(!name||!gradesCache)return;const s={id:id(),name,planId:state.activePlan,entries:{}};gradesCache.simulations.push(s);activeSimulation=s.id;gradeDraft=null;render();}
+  if(form.id==='grade-entry-form'){event.preventDefault();try{applyGradeDraft();}catch(e){notify(e.message);}}
+});

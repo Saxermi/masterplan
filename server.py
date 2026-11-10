@@ -723,7 +723,7 @@ class Handler(BaseHTTPRequestHandler):
                                           "meetings": meetings, "source": source})
             except (RuntimeError, ValueError) as exc:
                 return self.respond(503, {"error": str(exc)})
-        if path == "/" or path in ("/index.html", "/app.js", "/study-rules.js", "/styles.css", "/manifest.webmanifest", "/icon.svg"):
+        if path == "/" or path in ("/index.html", "/app.js", "/study-rules.js", "/grade-model.js", "/styles.css", "/manifest.webmanifest", "/icon.svg"):
             filename = "index.html" if path == "/" else path[1:]
             fp = WEB / filename
             if not fp.exists():

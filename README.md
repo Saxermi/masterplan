@@ -25,7 +25,7 @@ The default bind address is **`127.0.0.2:8765`** (as requested). If this loopbac
 - Local course records, manual events with building/floor/room, time clash detection and shared completed-course history.
 - Course/semester locks, interest-only courses (always **0 credited ECTS**), preliminary credit categories.
 - **Offline-first VVZ dump**: one complete SQLite database snapshot (ZIP) is downloaded on first start, stored under a gitignored cache directory, and reused across restarts for course search, details, exercise groups and timetable slots. Same-season historical proxies and all existing programme/category filters remain available. Upstream calls are globally limited to **one request per minute**.
-- Separate grade page with a password-encrypted `grades.enc` (AES-GCM via browser WebCrypto; PBKDF2 250,000 iterations), component-weighted estimates. No grades outside that page.
+- Separate grade page with a password-encrypted `grades.enc` (AES-GCM via browser WebCrypto; PBKDF2 250,000 iterations), component-weighted estimates. Grades appear only in the protected Grades and Study simulation views.
 - Minimal local JSON, atomic revisions, independent encrypted grade storage, JSON plan export/import, portable data folder (can be inside a cloud-sync folder). Open/move folders through Settings.
 - Configurable guideline JSON + schema for a future external extraction agent. Includes starter study-progress indicators, not full curriculum adjudication.
 
@@ -224,3 +224,29 @@ module. Existing selected meetings reset when changing the course allocation's s
 
 Regression: `python3 tests/browser_history_details.py` uses synthetic public-shaped metadata and
 an isolated temporary data folder; it does not modify personal plans.
+
+### Studiensimulation / Study simulation
+
+Der eigene Menüpunkt **Studiensimulation** enthält benannte, duplizierbare und löschbare
+Notenszenarien. Jedem Szenario wird ein Studienplan zugeordnet; dessen Module und Kategorien
+bestimmen die simulierte Schlussnote. Beim tatsächlichen Verlauf werden echte Ergebnisse über
+Kursverknüpfung, Kursnummer oder einen eindeutigen exakten Titel übernommen. Bekannte Noten und
+Bewertungsgewichtungen sind in der Simulation geschützt; Annahmen füllen nur offene Leistungen.
+
+Both **Grades** and **Study simulation** use form-based component editing: assessment names,
+weights, actual grades, separate assumptions for pending work, a target module grade, and an additive
+bonus such as +0.25. Forecasts show the known-component average, a possible 1–6 range, the required
+average on pending assessments and the grade resulting from entered assumptions. Bonuses are added
+after the weighted average and grades are capped at 6. Actual final grades do not use assumptions.
+
+**Änderungen mit „Übernehmen“ bestätigen und anschließend „Verschlüsselt speichern“.** Noten und
+Simulationen werden zusammen in `grades.enc` gespeichert; sie erscheinen weder in der normalen
+Plandatei noch im Planexport. Beim Verlassen beider privaten Ansichten wird der Speicher gesperrt.
+Vorhandene verschlüsselte Notendateien bleiben kompatibel. Für alte manuelle Noteneinträge mit
+abweichendem Titel kann im Noteneditor eine explizite Kursverknüpfung gewählt werden.
+
+**Apply edits, then choose Save encrypted.** Real marks and scenarios share the password-encrypted
+vault; actual marks remain separate from hypothetical assumptions. Leaving both private views locks
+the vault. Simulated averages use the same category weights and exclusions as the grade page;
+recognition and individual assessment regulations remain subject to manual verification. Developer
+coverage: `node --test tests/*.test.cjs` and `python3 tests/browser_grades.py`.
