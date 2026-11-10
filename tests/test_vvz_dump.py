@@ -109,7 +109,7 @@ class TestVvzDump(unittest.TestCase):
         self.assertEqual(selected['results'][0]['offering']['source_semester'],'2026S')
         with self.assertRaises(ValueError):
             self.catalog.search('', 'mathematics-bsc','eligible-core',[], 'recent',window,10,0,select_offering)
-        self.assertEqual(self.catalog.search('', 'cse','core',[], '2027S',window,50,0,select_offering)['total'],0)
+        self.assertTrue(self.catalog.search('', 'cse','core',[], '2027S',window,50,0,select_offering)['results'][0]['offering']['seasonMismatch'])
         case=self.catalog.search('','cse','case',[],'2026W',window,20,0,select_offering)
         self.assertEqual(case['results'][0]['number'],'405-0000-00L')
 

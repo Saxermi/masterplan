@@ -162,15 +162,13 @@ The screenshot uses mocked, non-personal data. The UI reports whether the local 
 
 The catalogue defaults to a concrete semester. Its recent choices span the previous two, current
 and next two semesters; an optional second concrete semester allows browsing autumn and spring
-together. Catalogue results and new linked allocations require exact confirmed offerings; historic
-proxies are no longer generated for new selections. Existing proxy records are preserved and labeled
-as historical references. Manual modules remain freely schedulable.
+together. Catalogue results and allocations prefer confirmed offerings and otherwise allow labelled historical references. Source unit IDs and source semesters are retained. Manual modules remain freely schedulable.
 
 Semester columns include removal with lock checks and confirmation for populated semesters;
 shortlist entries and completed history are retained. The timetable includes an inline assignment
 form and a manual-time form with a direct VVZ link for the selected module. Course cards provide
 “Change allocation” to adjust the target plan, semester and credit category. Changing semester clears
-selected events; locks and duplicates are checked. Empty scenarios now open correctly.
+selected events; locks and duplicates are checked. Historical and cross-season references are allowed with separate warnings. Empty scenarios now open correctly.
 
 Science in Perspective uses the shared catalogue section; Scientific Works in Mathematics/Physics
 are found by their official module numbers. Eligible MSc core electives display the matching Master
@@ -204,3 +202,25 @@ and the allocation editor. It remains part of specialisation credits while count
 its four lectures. Seminar grades are excluded from the final-grade formula. Existing seminar
 records remain compatible. Missing subtype metadata can use “Seminar” in the title as a hint;
 an explicit lecture classification takes precedence. Academic field recognition remains provisional.
+
+### Kursdetails, historische Angebote und Zeitzellen / Course details, references and time cells
+
+Modultitel sind anklickbar. Beschreibung, Lernziele, Inhalte und Literatur kommen aus dem lokalen
+VVZ-Dump bzw. dem vorhandenen Unit-Endpunkt. Die Ansicht nutzt die gewählte Sprache und fällt
+bei fehlender Übersetzung auf den vorhandenen Text zurück. Fehlende Daten sind explizit markiert;
+Kurstexte werden als Text dargestellt, nicht als ausführbares HTML. Die Abfrage erfolgt erst beim
+Öffnen und wird pro Unit-ID im Browser zwischengespeichert; die persönliche Plandatei bleibt klein.
+
+Historical course references may be assigned, moved and saved. The actual source unit/semester
+is preserved. Missing exact-term offerings show a historical-reference warning; a spring/autumn
+mismatch shows a second warning. Known same-season history is preferred. These warnings do not
+invalidate a degree plan, and existing course/semester locks still apply.
+
+Im Stundenplan werden die zugewiesenen Module des Zielsemesters angezeigt. Modul auswählen und
+eine Zeitzelle anklicken oder das Modul in eine Zeitzelle ziehen: Das Formular wird vorausgefüllt.
+Beginn/Ende prüfen und speichern; weitere Termine desselben Moduls werden hinzugefügt, nicht ersetzt.
+The target-semester module palette and time-cell click/drop flow support multiple meetings per
+module. Existing selected meetings reset when changing the course allocation's semester.
+
+Regression: `python3 tests/browser_history_details.py` uses synthetic public-shaped metadata and
+an isolated temporary data folder; it does not modify personal plans.

@@ -47,3 +47,11 @@ local application on this branch; it does not imply official ETH academic recogn
 
 Draft planning is intentionally permissive: an incomplete course mix can be saved and explored.
 The audit reports unmet requirements; it does not prevent recording a work-in-progress plan.
+
+## Subsequent course-details/calendar update
+
+Historical offers are selectable and movable again: missing exact offers and season mismatches
+produce separate warnings, not rejection. Clickable module titles now show supplied descriptions,
+learning objectives, contents and literature with DE/EN fallback. Calendar palette/time-cell click
+and drag flows prefill manual meeting entry and support multiple weekly meetings per module.
+The limitations concerning personal academic recognition and full date/recurrence semantics remain.

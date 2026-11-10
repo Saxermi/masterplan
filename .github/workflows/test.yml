@@ -40,3 +40,4 @@ jobs:
           python tests/browser_semester_flow.py
           python tests/browser_bulk.py
           python tests/browser_seminar.py
+          python tests/browser_history_details.py

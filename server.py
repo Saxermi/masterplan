@@ -330,13 +330,6 @@ class Store:
                 raise ValueError("Invalid MasterPlan data format")
             if incoming.get("revision") != old["revision"]:
                 raise RuntimeError("Revision conflict: reload before saving")
-            previous = { (p['id'], c['id']): c for p in [old['actualPlan'], *old['plans']] for c in p['courses'] }
-            for plan in [incoming['actualPlan'], *incoming['plans']]:
-                for course in plan['courses']:
-                    before = previous.get((plan['id'], course['id']))
-                    if course.get('unitId') and course.get('sourceSemester') != course['semester']:
-                        if not before or any(before.get(k) != course.get(k) for k in ('semester', 'unitId', 'sourceSemester')):
-                            raise ValueError('Course is not offered in the selected semester')
             new = copy.deepcopy(incoming)
             new["revision"] = old["revision"] + 1
             self._atomic(self.folder / "masterplan.json", new)
