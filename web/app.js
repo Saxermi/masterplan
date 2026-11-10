@@ -27,7 +27,7 @@ const plan = () => getPlan(state.activePlan);
 const actual = () => state.actualPlan;
 const editPlan = (s,key) => key==='actual' ? s.actualPlan : s.plans.find(p=>p.id===key);
 const classify = c => c.role === 'extra' ? 'orange' : c.role === 'requirement' ? 'gray' : '';
-const credited = c => !['extra','requirement','scientific'].includes(c.role) && c.status !== 'interested' && c.creditApproved !== false;
+const credited = c => MasterPlanRules.credited(c);
 const officialVvzUrl = c => c.unitId && /^\d{4}[SW]$/.test(c.sourceSemester||c.semester||'') ? `https://www.vvz.ethz.ch/Vorlesungsverzeichnis/lerneinheit.view?lerneinheitId=${encodeURIComponent(c.unitId)}&semkez=${encodeURIComponent(c.sourceSemester||c.semester)}&lang=${state.language}` : c.number && /^[A-Za-z0-9-]{5,35}$/.test(c.number) ? `https://www.vvz.ethz.ch/Vorlesungsverzeichnis/sucheLehrangebot.view?lerneinheitscode=${encodeURIComponent(c.number)}&semkez=${encodeURIComponent(c.semester||recentTerms()[2])}&lang=${state.language}` : null;
 const reviewUrl = c => c.reviewAvailable && /^[A-Za-z0-9-]{5,35}$/.test(c.number||'') ? `https://coursereview.ch/course/${encodeURIComponent(c.number)}` : null;
 function courseLinks(c){const links=[];const vvz=officialVvzUrl(c);if(vvz)links.push(`<a href="${attrs(vvz)}" target="_blank" rel="noopener noreferrer">${tr('ETH-Vorlesungsverzeichnis','ETH course catalogue')} ↗</a>`);const rev=reviewUrl(c);if(rev)links.push(`<a href="${attrs(rev)}" target="_blank" rel="noopener noreferrer">CourseReview ↗</a>`);return links.length?`<div class="course-links">${links.join(' ')}</div>`:'';}
@@ -112,61 +112,34 @@ function render() {
   else if(page!=='schedule' && meetingTimer){clearInterval(meetingTimer);meetingTimer=null;}
 }
 function addSelect(options,value){return `<select data-change="active-plan" class="plan-select">${options.map(p=>`<option value="${attrs(p.id)}" ${p.id===value?'selected':''}>${escape(p.name)}</option>`).join('')}</select>`;}
-function allCourses(p) {
-  const keyed=new Map();
-  for(const c of p.courses)keyed.set(`${c.number||c.id}@${c.semester}`,c);
-  for(const c of state.history||[])keyed.set(`${c.number||c.id}@${c.semester}`,{...c,status:'completed',locked:true});
-  return [...keyed.values()];
-}
-function courseTotal(p, mode='all'){return allCourses(p).filter(c=>credited(c) && (mode==='all' || c.status==='completed')).reduce((a,c)=>a+safe(c.ects),0);}
+function allCourses(p) {return MasterPlanRules.allCourses(p,state.history||[]);}
+function studyAudit(p) {return MasterPlanRules.audit(p,state.history||[],guidelines||{},state.scientificWorksBSc);}
+function courseTotal(p,mode='all') {return studyAudit(p).credited.filter(c=>mode==='all'||c.status==='completed').reduce((sum,c)=>sum+c.ects,0);}
 function requirementRows(p) {
-  const c=allCourses(p).filter(credited);
-  const byRole=(roles,kind='all')=>c.filter(x=>roles.includes(x.role) && (kind!=='completed'||x.status==='completed'));
-  const sum=(rows)=>rows.reduce((a,x)=>a+safe(x.ects),0);
-  const entries=(kind)=>{
-    const core=byRole(['core'],kind), spec=byRole(['specialisation'],kind), elective=byRole(['elective'],kind);
-    const caseStudies=byRole(['case'],kind), projects=byRole(['project'],kind), sip=byRole(['sip'],kind), thesis=byRole(['thesis'],kind);
-    const lectures=spec.filter(x=>x.subtype!=='seminar');
-    const seminars=spec.filter(x=>x.subtype==='seminar');
-    const science=(state.scientificWorksBSc || allCourses(p).some(x=>x.role==='scientific' && x.status==='completed'));
-    const needs=allCourses(p).filter(x=>x.role==='requirement');
-    return {
-      main: {ects:sum([...core,...spec,...elective]), count:core.length+spec.length+elective.length},
-      core:{ects:sum(core),count:core.length,numbers:core.map(x=>x.number)},spec:{ects:sum(spec),count:spec.length,lectures:lectures.length,seminars:seminars.length},
-      elective:{ects:sum(elective),count:elective.length},case:{ects:sum(caseStudies),count:caseStudies.length},
-      project:{ects:sum(projects),count:projects.length},sip:{ects:sum(sip),count:sip.length},thesis:{ects:sum(thesis),count:thesis.length},
-      total:{ects:sum(c),count:c.length},scientific:{ects:0,count:science?1:0},
-      requirements:{ects:0,count:needs.filter(x=>x.status==='completed').length,total:needs.length}
-    };
-  };
-  const planned=entries('all'), completed=entries('completed');
   const labels={main:tr('Main Areas (Core + Spezialisierung + Electives)','Main areas (core + specialisation + electives)'),core:'Core Courses',
     spec:tr('Spezialisierung (4 Vorlesungen + Seminar)','Specialisation (4 lectures + seminar)'),elective:'Electives',case:'Case Studies',
     project:tr('Semesterarbeit','Semester project'),sip:'Science in Perspective',thesis:tr('Masterarbeit','Master thesis'),
     total:tr('Gesamtabschluss','Total degree'),scientific:'Scientific Works (0 ECTS)'};
-  const order=['total','main','core','spec','elective','case','project','sip','thesis','scientific'];
-  const targets={total:120,main:74,core:12,spec:18,elective:12,case:6,project:8,sip:2,thesis:30,scientific:0};
-  const needed={core:x=>x.count>=2&&!(['252-0535-00L','263-5210-00L'].every(n=>x.numbers.includes(n))),spec:x=>x.lectures>=4&&x.seminars>=1,elective:x=>x.count>=2,
-    case:x=>x.count>=2,project:x=>x.count>=1,thesis:x=>x.count>=1,scientific:x=>x.count>=1};
-  return order.map(key=>{
-    const minEcts=guidelines?.requirements?.find(r=>r.id===key)?.minEcts ?? targets[key];
-    const ok=x=>x.ects>=minEcts && (!needed[key]||needed[key](x));
-    return {key,label:labels[key],target:minEcts,planned:planned[key].ects,completed:completed[key].ects,
-      courses:planned[key].count,done:ok(completed[key]),potential:ok(planned[key]),details:planned[key]};
-  });
+  return studyAudit(p).rows.map(r=>({...r,label:labels[r.key]}));
 }
-function bscRequirements(p) {
-  const courses=allCourses(p).filter(x=>x.role==='requirement');
-  return {courses, done:courses.filter(x=>x.status==='completed').length};
+function bscRequirements(p) {return studyAudit(p).admission;}
+function allocationIssues(p) {
+  const audit=studyAudit(p);
+  const warnings=audit.issues.filter(i=>!['credits','minCourses','minLectures','minSeminars'].includes(i.code));
+  return `<div class="card spaced" id="allocation-audit"><h2 class="section-title">${tr('Zuordnungsprüfung','Allocation checks')}</h2>
+    <p>${audit.plannedValid?tr('Die erfasste Planung erfüllt die geprüften Mindestanforderungen.','The recorded plan meets the checked requirements.'):tr('Die Planung ist noch unvollständig oder enthält ungültige Zuordnungen.','The plan is incomplete or has invalid allocations.')}</p>
+    <p class="hint">${tr('Zusätzliche Electives ersetzen keine fehlenden Core-Kurse oder Spezialisierungsleistungen. Mehr als 130 ECTS sind erlaubt; der Hinweis betrifft nur die spätere Zeugnisauswahl.','Extra electives cannot replace missing core courses or specialisation achievements. More than 130 ECTS are allowed; the warning only concerns the later transcript selection.')}</p>
+    ${warnings.map(i=>`<p class="note" data-audit-code="${attrs(i.code)}">${i.severity==='warning'?'⚠':'!'} ${escape(i.message)}</p>`).join('')}
+    <p class="small muted">${tr('Auch eine vollständige rechnerische Planung benötigt die Prüfung der individuellen Anerkennung.','Even a numerically complete plan requires confirmation of individual eligibility.')}</p></div>`;
 }
 
 function requirementCard(r) {
   const progress=r.target?Math.min(100,100*r.completed/r.target):(r.done?100:0);
   const value=r.key==='scientific'?`${r.details.count}/1`: `${formatNum(r.completed)} / ${r.target}`;
-  const details=r.key==='core'&&['252-0535-00L','263-5210-00L'].every(n=>r.details.numbers?.includes(n))?tr('AML und PAI dürfen nicht beide als Core Course zählen.','AML and PAI cannot both count as core courses.'):r.key==='spec'?`${r.details.lectures}/4 ${tr('Vorlesungen','lectures')} · ${r.details.seminars}/1 Seminar`:
-    r.key==='case'?`${r.courses}/2 ${tr('Teilnahmen','sessions')}`:
-    ['core','elective'].includes(r.key)?`${r.courses}/${r.key==='core'?2:2} ${tr('Kurse (mind.)','courses (min.)')}`:'';
-  return `<div class="card compact"><div class="row between"><strong class="small">${escape(r.label)}</strong>${pill(r.done?tr('Erfüllt','Completed'):r.potential?tr('Geplant','Planned'):tr('Offen','Open'),r.done?'green':r.potential?'':'orange')}</div>
+  const details=r.key==='core'&&['252-0535-00L','263-5210-00L'].every(n=>r.details.numbers?.includes(n))?tr('AML und PAI dürfen nicht beide als Core Course zählen.','AML and PAI cannot both count as core courses.'):r.key==='spec'?`${r.details.lectures}/${r.rule.minLectures} ${tr('Vorlesungen','lectures')} · ${r.details.seminars}/${r.rule.minSeminars} Seminar`:
+    r.key==='case'?`${r.courses}/${r.rule.minCourses} ${tr('Teilnahmen','sessions')}`:
+    ['core','elective'].includes(r.key)?`${r.courses}/${r.rule.minCourses} ${r.rule.maxCourses===r.rule.minCourses?tr('Kurse (genau)','courses (exactly)'):tr('Kurse (mind.)','courses (min.)')}`:'';
+  return `<div class="card compact" data-requirement="${attrs(r.key)}" data-potential="${r.potential}" data-done="${r.done}"><div class="row between"><strong class="small">${escape(r.label)}</strong>${pill(r.done?tr('Erfüllt','Completed'):r.potential?tr('Geplant','Planned'):tr('Offen','Open'),r.done?'green':r.potential?'':'orange')}</div>
     <div class="row between" style="margin-top:10px"><span class="small muted">${value}</span><span class="small muted">${r.key==='scientific'?'0 ECTS':`${formatNum(r.planned)} ECTS ${tr('inkl. Planung','incl. plan')}`}</span></div>
     <div class="progress" style="margin:10px 0 8px"><div style="width:${progress}%"></div></div>
     ${details?`<div class="tiny muted">${details}</div>`:''}</div>`;
@@ -184,7 +157,7 @@ function dashboard() {
       <div class="card"><div class="label">${tr('Aktuell ausgewählte Module','Selected courses')}</div><div class="metric">${selectedCourseCount(p)}</div><div class="small muted">${state.interests.length} ${tr('auf Merkliste','on shortlist')}</div></div>
       <div class="card"><div class="label">${tr('Offene Studienbedingungen','Open requirements')}</div><div class="metric">${info.open}</div><div class="small muted">${tr('Prüfung ist vorläufig','Preliminary audit')}</div></div></div>
     <div class="card spaced"><div class="row between"><h2 class="section-title">${tr('Required Study Achievements – tatsächlicher Stand','Required study achievements – actual progress')}</h2>${button(tr('Details','Details'),'go-requirements')}</div>
-      <p class="hint">${tr('Abgeschlossen und erst geplant werden getrennt bewertet. Auflagen sind nicht Teil der 120 ECTS.','Completed and merely planned results are separate. Admission requirements do not count towards the 120 credits.')}</p>${briefRequirements(p)}
+      <p class="hint">${tr('Abgeschlossen und erst geplant werden getrennt bewertet. Auflagen sind nicht Teil der 120 ECTS.','Completed and merely planned results are separate. Admission requirements do not count towards the 120 credits.')}</p>${briefRequirements(p)}${allocationIssues(p)}
       <div class="line"></div><div class="row between wrap"><span class="small">${tr('Persönliche Auflagen','Personal admission requirements')}: ${admission.done}/${admission.courses.length} ${tr('bestanden','completed')}</span>${button(tr('RW-Bachelor-Kurse finden','Find RW Bachelor courses'),'browse-rw')}</div>
     </div>
     <div class="card spaced"><div class="row between"><h2 class="section-title">${tr('Deine tatsächlichen Semester','Your actual semesters')}</h2>${button(tr('Bearbeiten','Edit'),'go-semesters')}</div>
@@ -373,7 +346,7 @@ function requirements() {
   return `${pageHeader(tr('Studienregeln & Auflagen','Study requirements & admission conditions'),tr('Jeder reale Plan und jedes Szenario wird separat geprüft. Keine Doppelzählung von ECTS.','The actual record and each scenario are checked separately. No ECTS double counting.'))}
     <div class="card"><div class="row between wrap"><div><h2 class="section-title">${tr('Ausgewerteter Studienplan','Study plan being checked')}</h2><p class="small muted">${p.id==='actual'?tr('Tatsächlicher Stand','Actual progress'):tr('Hypothetisches Szenario','Hypothetical scenario')}</p></div>${programmeOptions()}</div></div>
     <div class="note spaced">${tr('Vorläufige Prüfung nach den MSc-CSE-Guidelines 2026 (Reglement 2024). Das persönliche Reglement, die Kurszuordnung und ETH-Genehmigungen müssen bestätigt werden.','Provisional check based on 2026 MSc CSE guidelines (2024 regulations). Personal regulations, course classification and ETH approvals must be verified.')}</div>
-    <div class="grid columns-3 spaced">${requirementRows(p).map(requirementCard).join('')}</div>
+    <div class="grid columns-3 spaced">${requirementRows(p).map(requirementCard).join('')}</div>${allocationIssues(p)}
     <div class="card spaced"><h2 class="section-title">${tr('Auflagen – ausserhalb der 120 Master-ECTS','Admission requirements – outside the 120 MSc credits')}</h2>
       <p class="small muted">${tr('Kurse gemäss deinem Zulassungsbrief eintragen. Auflagen zählen nie zu den Master-ECTS.','Enter the courses from your admission letter. Their credits never count towards the master degree.')}</p>
       ${admission.courses.map(c=>`<div class="course-card"><div><strong>${escape(c.title)}</strong><div class="small muted">${escape(c.number||'')} · ${formatNum(c.ects)} ${tr('Auflagen-ECTS','admission credits')}</div></div>${pill(c.status==='completed'?tr('Erfüllt','Done'):tr('Offen / geplant','Open / planned'),c.status==='completed'?'green':'orange')}</div>`).join('')||`<p class="muted small">${tr('Noch keine Auflagen erfasst.','No requirements entered yet.')}</p>`}
@@ -386,18 +359,10 @@ function requirements() {
 function grades() {
   return `${pageHeader(tr('Private Noten','Private grades'),tr('Noten erscheinen ausschließlich hier. Daten werden mit deinem Passwort im Browser verschlüsselt.','Grades appear only here. Data is encrypted in your browser using your password.'))}<div class="card" style="max-width:820px"><div class="row between"><h2 class="section-title">🔒 ${tr('Geschützter Notenbereich','Protected grade vault')}</h2>${gradesCache?button(tr('Sperren','Lock'),'lock-grades'):''}</div>${gradesCache?renderGradeEditor():`<p class="muted small">${tr('Passwort eingeben, um die verschlüsselten Noten zu öffnen oder erstmals anzulegen. Ohne Passwort ist keine Wiederherstellung möglich.','Enter a password to unlock or create the encrypted grades. Recovery is impossible without the password.')}</p><form id="grades-unlock-form"><div class="field"><label>${tr('Passwort','Password')}</label><input name="password" type="password" required minlength="8" autocomplete="off" placeholder="${tr('Mindestens 8 Zeichen','At least 8 characters')}"></div><div style="margin-top:13px"><button class="button" type="submit">${tr('Öffnen / erstellen','Unlock / create')}</button></div></form>`}</div>`;
 }
-function moduleGrade(entry){const parts=entry.parts||[];const sum=parts.reduce((a,p)=>a+safe(p.weight),0);return sum>0?parts.reduce((a,p)=>a+safe(p.weight)*safe(p.value),0)/sum:null;}
-function gradeCategory(entry){return ['core','specialisation','elective','thesis'].includes(entry.category)?entry.category:'excluded';}
-function calculateFinalGrade(entries){
-  const relevant=(entries||[]).filter(e=>e.countsForFinal!==false && gradeCategory(e)!=='excluded' && moduleGrade(e)!==null);
-  const count=key=>relevant.filter(e=>gradeCategory(e)===key).length;
-  const counts={core:count('core'),specialisation:count('specialisation'),elective:count('elective'),thesis:count('thesis')};
-  const complete=counts.core===2&&counts.specialisation===4&&counts.elective>=2&&counts.thesis===1;
-  const weight={core:2,specialisation:1,elective:1,thesis:4};
-  const denominator=relevant.reduce((sum,e)=>sum+weight[gradeCategory(e)],0);
-  const weighted=relevant.reduce((sum,e)=>sum+moduleGrade(e)*weight[gradeCategory(e)],0);
-  return {counts,denominator,value:denominator?weighted/denominator:null,complete};
-}
+function moduleGrade(entry){return MasterPlanRules.moduleGrade(entry);}
+function gradeCategory(entry){return entry.category==='specialisation'&&entry.subtype==='seminar'?'excluded':['core','specialisation','elective','thesis'].includes(entry.category)?entry.category:'excluded';}
+function calculateFinalGrade(entries){return MasterPlanRules.calculateFinalGrade(entries,guidelines||{});}
+
 function renderGradeEditor() {
   const entries=gradesCache.entries||[],final=calculateFinalGrade(entries),c=final.counts;
   return `<div class="note good"><strong>${tr('Offizielle MSc-CSE-Schlussnotenformel (Guidelines Seite 10)','Official MSc CSE final grade formula (guidelines p. 10)')}</strong>
@@ -440,8 +405,23 @@ function askCourse(existing=null,semesterOverride=null,planKey=state.activePlan)
   if(!roleList.includes(role)){notify(tr('Unbekannte Rolle','Unknown role'));return;}
   const status=prompt(`${tr('Status','Status')}: interested, planned, enrolled, completed`,existing?.status||'planned');if(status===null)return;
   if(!['interested','planned','enrolled','completed'].includes(status)){notify(tr('Ungültiger Status','Invalid status'));return;}
-  const record={...(existing||{}),id:existing?.id||id(),title:title.trim(),number:number||'',semester:sem,ects:Number(ects),role,status,events:existing?.events||[]};
-  save(s=>{const pl=editPlan(s,p.id);if(!pl.semesters.includes(sem))pl.semesters.push(sem);pl.semesters.sort();if(existing)pl.courses=pl.courses.map(c=>c.id===existing.id?record:c);else pl.courses.push(record);if(status==='completed'&&!s.history.some(c=>(c.number||c.id)===(record.number||record.id)))s.history.push({...record,locked:true});});
+  const subtype=role==='specialisation'?prompt(tr('Art: lecture oder seminar','Type: lecture or seminar'),existing?.subtype||'lecture'):null;
+  if(role==='specialisation'&&!['lecture','seminar'].includes(subtype))return notify(tr('Ungültige Spezialisierungsart.','Invalid specialisation type.'));
+  const field=role==='specialisation'?prompt(tr('Spezialisierungsgebiet (optional)','Specialisation field (optional)'),existing?.specialisation||p.specialisation||''):'';
+  if(field===null)return;
+  const usedForBSc=confirm(tr('Wurden diese Credits bereits für den Bachelorabschluss verwendet?','Were these credits already used for your Bachelor degree?'));
+  const record={...(existing||{}),id:existing?.id||id(),title:title.trim(),number:number||'',semester:sem,ects:Number(ects),role,status,
+    subtype:subtype||undefined,specialisation:field||undefined,usedForBSc,events:existing?.events||[]};
+  return save(s=>{
+    const pl=editPlan(s,p.id);
+    if(pl.courses.some(c=>c.id!==record.id&&record.number&&String(c.number||'').trim().toUpperCase()===record.number.trim().toUpperCase()&&c.semester===sem))throw Error(tr('Kurs bereits im Semester zugeordnet.','Course already allocated to this semester.'));
+    if(!pl.semesters.includes(sem))pl.semesters.push(sem);pl.semesters.sort();
+    if(existing)pl.courses=pl.courses.map(c=>c.id===existing.id?record:c);else pl.courses.push(record);
+    if(p.id!=='actual')return;
+    const index=s.history.findIndex(c=>c.id===record.id);
+    if(status==='completed'){if(index>=0)s.history[index]={...record,locked:true};else if(!s.history.some(c=>MasterPlanRules.allCourses({courses:[record]},[c]).length===1))s.history.push({...record,locked:true});}
+    else if(index>=0)s.history.splice(index,1);
+  });
 }
 function makeFromSearch(number,extra) {
   const result=results.find(x=>x.number===number);if(!result)return;
@@ -451,7 +431,7 @@ function makeFromSearch(number,extra) {
   if(!roleList.includes(role)){notify(tr('Ungültige Kategorie','Invalid category'));return;}
   const off=result.offering||{};
   const c={id:id(),number,semester:wanted,title:(state.language==='en'?result.title_english||result.title:result.title||result.title_english)||number,ects:safe(result.credits),role,status:'planned',unitId:off.unit_id||null,sourceSemester:off.source_semester||null,proxy:!!off.proxy,events:[],locked:false,creditApproved:extra?false:null};
-  save(s=>{const pl=s.plans.find(x=>x.id===p.id);if(!pl.semesters.includes(wanted)){pl.semesters.push(wanted);pl.semesters.sort();}pl.courses.push(c);});
+  save(s=>{const pl=editPlan(s,p.id);if(!pl.semesters.includes(wanted)){pl.semesters.push(wanted);pl.semesters.sort();}pl.courses.push(c);});
 }
 function editEvents(course,planKey=state.activePlan) {
   const p=getPlan(planKey);if(fixed(course,p)){notify(tr('Modul oder Semester ist fixiert.','Course or semester locked.'));return;}
@@ -497,7 +477,7 @@ async function executeAction(action,element) {
   if(action==='move-folder'||action==='open-folder'){const folder=prompt(tr('Absoluter lokaler Ordnerpfad (kann im Cloud-Sync-Ordner liegen)','Absolute local folder path (may reside in cloud-synced folder)'),$('#folder-label')?.textContent||'');if(!folder)return;try{const x=await request('/api/storage','POST',{mode:action==='move-folder'?'move':'open',folder});state=x.state;notify(tr('Datenordner aktualisiert.','Data folder updated.'));render();loadFolder();}catch(e){notify(e.message);}return;}
   if(action==='export-data'){const b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(b),a=document.createElement('a');a.href=url;a.download='masterplan-export.json';a.click();URL.revokeObjectURL(url);return;}
   if(action==='lock-grades'){gradesCache=null;gradesPassword=null;return render();}
-  if(action==='grade-add'||action==='grade-edit'){const index=action==='grade-edit'?Number(element.dataset.index):-1;const prev=index>=0?gradesCache.entries[index]:null;const name=prompt(tr('Modulname','Course name'),prev?.name||'');if(!name)return;const old=(prev?.parts||[]).map(p=>`${p.name},${p.value},${p.weight}`).join('\n');const raw=prompt(tr('Teilleistungen: Name, Note, Gewicht in % (eine Zeile pro Teilleistung)','Components: name, grade, weight in % (one line each)'),old||'Exam,5.0,100');if(raw===null)return;const parts=[];for(const line of raw.split('\n')){const [name,value,weight]=line.split(',').map(x=>x.trim());if(!name||safe(value)<1||safe(value)>6||safe(weight)<=0)return notify(tr('Ungültige Note (1–6) oder Gewichtung.','Invalid grade (1–6) or weight.'));parts.push({name,value:Number(value),weight:Number(weight)});}const category=prompt(tr('Abschlusskategorie: core, specialisation, elective, thesis oder excluded','Graduation category: core, specialisation, elective, thesis or excluded'),prev?.category||'core');if(category===null)return;if(!['core','specialisation','elective','thesis','excluded'].includes(category))return notify(tr('Ungültige Abschlusskategorie.','Invalid graduation category.'));const record={name,parts,category,countsForFinal:category!=='excluded'};if(index<0)gradesCache.entries.push(record);else gradesCache.entries[index]=record;return render();}
+  if(action==='grade-add'||action==='grade-edit'){const index=action==='grade-edit'?Number(element.dataset.index):-1;const prev=index>=0?gradesCache.entries[index]:null;const name=prompt(tr('Modulname','Course name'),prev?.name||'');if(!name)return;const old=(prev?.parts||[]).map(p=>`${p.name},${p.value},${p.weight}`).join('\n');const raw=prompt(tr('Teilleistungen: Name, Note, Gewicht in % (eine Zeile pro Teilleistung)','Components: name, grade, weight in % (one line each)'),old||'Exam,5.0,100');if(raw===null)return;const parts=[];for(const line of raw.split('\n')){const [name,value,weight]=line.split(',').map(x=>x.trim());if(!name||safe(value)<1||safe(value)>6||safe(weight)<=0)return notify(tr('Ungültige Note (1–6) oder Gewichtung.','Invalid grade (1–6) or weight.'));parts.push({name,value:Number(value),weight:Number(weight)});}const category=prompt(tr('Abschlusskategorie: core, specialisation, elective, thesis oder excluded','Graduation category: core, specialisation, elective, thesis or excluded'),prev?.category||'core');if(category===null)return;if(!['core','specialisation','elective','thesis','excluded'].includes(category))return notify(tr('Ungültige Abschlusskategorie.','Invalid graduation category.'));const subtype=category==='specialisation'?prompt(tr('Art: lecture oder seminar','Type: lecture or seminar'),prev?.subtype||'lecture'):null;if(category==='specialisation'&&!['lecture','seminar'].includes(subtype))return notify(tr('Ungültige Spezialisierungsart.','Invalid specialisation type.'));const record={...prev,name,parts,category,subtype:subtype||undefined,countsForFinal:category!=='excluded'&&subtype!=='seminar'};if(index<0)gradesCache.entries.push(record);else gradesCache.entries[index]=record;return render();}
   if(action==='grade-save'){try{await saveGrades();notify(tr('Noten verschlüsselt gespeichert.','Grades encrypted and saved.'));}catch(e){notify(e.message);}return;}
   if(action==='set-de'||action==='set-en')return save(s=>s.language=action==='set-de'?'de':'en');
   if(action==='set-light'||action==='set-dark')return save(s=>s.theme=action==='set-light'?'light':'dark');

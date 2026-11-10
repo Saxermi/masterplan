@@ -79,6 +79,26 @@
           },
           "group": {
             "type": "string"
+          },
+          "maxCourses": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maxLectures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maxSeminars": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "courseEcts": {
+            "type": "number",
+            "minimum": 0
+          },
+          "warningEcts": {
+            "type": "number",
+            "minimum": 0
           }
         }
       }

@@ -7,6 +7,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -162,43 +163,128 @@ def migrate_state(x):
         x["activePlan"] = "actual"
         x["interests"] = []
         x["scientificWorksBSc"] = False
+        for plan in x['plans']:
+            for course in plan.get('courses', []):
+                course.setdefault('ects', 0)
+                course.setdefault('status', 'planned')
+                course.setdefault('events', [])
+                course.setdefault('title', '')
+                if course.get('role') == 'eligible-core':
+                    course['role'] = 'elective'
+        for course in x.get('history', []):
+            course.setdefault('ects', 0)
+            course.setdefault('status', 'completed')
+            course.setdefault('events', [])
+            course.setdefault('title', '')
     return x
 
 
+def _text(value, maximum, nonempty=False):
+    return isinstance(value, str) and len(value) <= maximum and (not nonempty or bool(value.strip()))
+
+
+def _credits(value):
+    return type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 40
+
+
+def _term(value):
+    return isinstance(value, str) and re.fullmatch(r"\d{4}[SW]", value) is not None
+
+
+def _private_grade_keys(value):
+    if isinstance(value, dict):
+        return any('grade' in str(k).lower() or 'notevalue' in str(k).lower() or _private_grade_keys(v) for k, v in value.items())
+    return isinstance(value, list) and any(_private_grade_keys(v) for v in value)
+
+
+def valid_event(event):
+    if not isinstance(event, dict) or type(event.get('day')) is not int or not 0 <= event['day'] <= 6:
+        return False
+    if any(not isinstance(event.get(k), str) or not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', event[k]) for k in ('start', 'end')):
+        return False
+    if event['start'] >= event['end']:
+        return False
+    if any(k in event and not _text(event[k], 100) for k in ('building', 'floor', 'room')):
+        return False
+    if event.get('date') is not None and not _text(event['date'],10):
+        return False
+    if event.get('date'):
+        try:
+            datetime.strptime(event['date'], '%Y-%m-%d')
+        except (TypeError, ValueError):
+            return False
+    return all(k not in event or type(event[k]) is bool for k in ('biweekly', 'firstHalf', 'secondHalf'))
+
+
+def valid_course(course):
+    if not isinstance(course, dict) or not _text(course.get('id'), 150, True) or not _term(course.get('semester')):
+        return False
+    if not _text(course.get('title', ''), 250) or not _text(course.get('number', ''), 60) or not _credits(course.get('ects')):
+        return False
+    if course.get('role') not in (*CATEGORY_PATHS, 'extra') or course.get('status') not in ('interested', 'planned', 'enrolled', 'completed'):
+        return False
+    if any(k in course and type(course[k]) is not bool for k in ('locked', 'proxy', 'reviewAvailable', 'usedForBSc')):
+        return False
+    if course.get('creditApproved') is not None and type(course['creditApproved']) is not bool:
+        return False
+    if course.get('subtype') not in (None, 'lecture', 'seminar') or not _text(course.get('specialisation', ''), 150):
+        return False
+    if course.get('unitId') is not None and (type(course['unitId']) is not int or not 1 <= course['unitId'] <= 1_000_000_000):
+        return False
+    if course.get('sourceSemester') is not None and not _term(course['sourceSemester']):
+        return False
+    events = course.get('events')
+    return isinstance(events, list) and len(events) <= 100 and all(valid_event(e) for e in events)
+
+
 def valid_state(x):
-    if not isinstance(x, dict) or type(x.get("revision")) is not int or x["revision"] < 0 or x.get("schema") != 2 or not isinstance(x.get("plans"), list):
+    """Validate storage shape; incomplete academic plans remain valid drafts."""
+    if not isinstance(x, dict) or type(x.get('revision')) is not int or x['revision'] < 0 or x.get('schema') != 2:
         return False
-    if any("grade" in str(k).lower() or "notevalue" in str(k).lower() for k in x):
+    if _private_grade_keys(x) or x.get('language') not in ('de', 'en') or x.get('theme') not in ('light', 'dark'):
         return False
-    if len(x["plans"]) > 100 or not isinstance(x.get("history"), list) or not isinstance(x.get("interests"), list) or len(x["interests"]) > 500:
+    if type(x.get('scientificWorksBSc')) is not bool:
         return False
-    if x.get("language") not in ("de", "en") or x.get("theme") not in ("light", "dark") or not isinstance(x.get("scientificWorksBSc"), bool):
-        return False
-    for interest in x["interests"]:
-        if not isinstance(interest, dict) or not isinstance(interest.get("id"), str) or len(str(interest.get("title", ""))) > 250:
+    for key, maximum in [('plans', 100), ('history', 500), ('interests', 500), ('selectedSpecialisations', len(SPECIALISATIONS))]:
+        if not isinstance(x.get(key), list) or len(x[key]) > maximum:
             return False
-    plans = [x.get("actualPlan")] + x["plans"]
+    specs = x['selectedSpecialisations']
+    if any(not isinstance(s, str) or s not in SPECIALISATIONS for s in specs) or len(set(specs)) != len(specs):
+        return False
+    if not all(valid_course(c) and c['status']=='completed' for c in x['history']) or len({c['id'] for c in x['history']}) != len(x['history']):
+        return False
+    for interest in x['interests']:
+        if not isinstance(interest, dict) or not _text(interest.get('id'), 150, True) or not _text(interest.get('title', ''), 250):
+            return False
+        if 'ects' in interest and not _credits(interest['ects']):
+            return False
+        if not _text(interest.get('number', ''), 60) or interest.get('suggestedRole', 'extra') not in (*CATEGORY_PATHS, 'extra'):
+            return False
+        offerings = interest.get('offerings', {})
+        if not isinstance(offerings, dict) or len(offerings) > 100 or any(not _term(k) or type(v) is not int or not 1 <= v <= 1_000_000_000 for k, v in offerings.items()):
+            return False
+    if len({c['id'] for c in x['interests']}) != len(x['interests']):
+        return False
+    actual = x.get('actualPlan')
+    if not isinstance(actual, dict) or actual.get('id') != 'actual':
+        return False
     ids = set()
-    for pl in plans:
-        if not isinstance(pl, dict) or not isinstance(pl.get("id"), str) or not isinstance(pl.get("name"), str) or len(pl["name"]) > 150:
+    for plan in [actual, *x['plans']]:
+        if not isinstance(plan, dict) or not _text(plan.get('id'), 150, True) or not _text(plan.get('name'), 150):
             return False
-        if pl["id"] in ids or not isinstance(pl.get("courses"), list) or not isinstance(pl.get("semesters"), list) or not isinstance(pl.get("lockedSemesters"), list):
+        if plan['id'] in ids or any(not isinstance(plan.get(k), list) for k in ('courses', 'semesters', 'lockedSemesters')):
             return False
-        if any("grade" in str(k).lower() for k in pl):
+        ids.add(plan['id'])
+        terms, locked = plan['semesters'], plan['lockedSemesters']
+        if len(plan['courses']) > 300 or len(terms) > 30 or any(not _term(s) for s in terms + locked):
             return False
-        ids.add(pl["id"])
-        if len(pl["courses"]) > 300 or len(pl["semesters"]) > 30:
+        if len(set(terms)) != len(terms) or len(set(locked)) != len(locked) or not set(locked).issubset(terms):
             return False
-        if any(not isinstance(s, str) or not re.fullmatch(r"\d{4}[SW]", s) for s in pl["semesters"]):
+        if any(not valid_course(c) or c['semester'] not in terms for c in plan['courses']):
             return False
-        for course in pl["courses"]:
-            if not isinstance(course, dict) or not isinstance(course.get("id"), str) or not isinstance(course.get("semester"), str):
-                return False
-            if any("grade" in str(k).lower() for k in course):
-                return False
-            if course.get("role", "extra") not in (*CATEGORY_PATHS, "extra", "eligible-core"):
-                return False
-    return x.get("activePlan") in ids
+        if len({c['id'] for c in plan['courses']}) != len(plan['courses']):
+            return False
+    return isinstance(x.get('activePlan'), str) and x['activePlan'] in ids
 
 
 class Store:
@@ -637,7 +723,7 @@ class Handler(BaseHTTPRequestHandler):
                                           "meetings": meetings, "source": source})
             except (RuntimeError, ValueError) as exc:
                 return self.respond(503, {"error": str(exc)})
-        if path == "/" or path in ("/index.html", "/app.js", "/styles.css", "/manifest.webmanifest", "/icon.svg"):
+        if path == "/" or path in ("/index.html", "/app.js", "/study-rules.js", "/styles.css", "/manifest.webmanifest", "/icon.svg"):
             filename = "index.html" if path == "/" else path[1:]
             fp = WEB / filename
             if not fp.exists():
