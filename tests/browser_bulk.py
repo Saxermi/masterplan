@@ -41,6 +41,7 @@ def main():
                 # A separate hypothetical plan still has its own unassigned list.
                 page.locator('#assign-course-form [name="plan"]').select_option('physics');assert page.locator('#assignment-choices input').count()==4
                 page.reload();page.wait_for_selector('.metric');page.locator('[data-nav="semesters"]').click();assert page.locator('#assignment-choices input').count()==1
+                page.locator('[data-nav="catalog"]').click();assert page.locator('.shortlist-item').count()==1
                 assert not errors,errors;print('BULK BROWSER PASSED: filtered multi-selection, one-save batch, assigned/locked hiding, native drag/drop, locked destination, per-plan choices and persistence')
                 b.close()
         finally:http.shutdown();http.server_close();thread.join(timeout=2)
