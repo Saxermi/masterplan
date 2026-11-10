@@ -26,8 +26,8 @@ def main():
                 assert http.store.get()['activePlan']=='physics'
                 page.locator('[data-nav="schedule"]').click();page.locator('[data-action="focus-schedule-assign"]').click()
                 form=page.locator('#assign-course-form');assert form.locator('[name="plan"]').input_value()=='physics'
-                form.locator('[name="semester"]').select_option('2027S');form.locator('[data-action="assign-interest"]').click()
-                assert 'not offered' in page.locator('#toast').inner_text();assert http.store.get()['plans'][0]['courses']==[]
+                form.locator('input[name="interest"]').check();form.locator('[name="semester"]').select_option('2027S');form.locator('[data-action="assign-interest"]').click()
+                assert 'confirmed offering' in page.locator('#toast').inner_text();assert http.store.get()['plans'][0]['courses']==[]
                 form.locator('[name="semester"]').select_option('2026W');form.locator('[data-action="assign-interest"]').click()
                 page.wait_for_selector('#event-form');assert 'lerneinheitId=111' in page.locator('#manual-vvz-link a').first.get_attribute('href')
                 ev=page.locator('#event-form');ev.locator('[name="start"]').fill('08:15');ev.locator('[name="end"]').fill('10:00');ev.locator('button[type="submit"]').click();page.wait_for_selector('.event')

@@ -24,3 +24,9 @@
 
 /* Course attribution and API meeting selection */
 .course-links{display:flex;flex-wrap:wrap;gap:12px;margin-top:9px;font-size:11px}.course-links a{font-weight:650;text-underline-offset:2px}.meeting-unit{padding:12px 0;border-bottom:1px solid var(--line)}.meeting-unit:last-child{border-bottom:0}.meeting-unit .course-card{border-bottom:0;padding:2px 0 9px}.meeting-options{border-radius:9px;background:var(--bg);padding:12px;display:grid;gap:8px}.meeting-option{display:flex;align-items:flex-start;gap:8px;padding:6px 4px;font-size:12px;cursor:pointer}.meeting-option input{width:auto;min-width:16px;margin-top:1px}.meeting-option span{font-weight:450}.meeting-options .smallbtn{justify-self:start}
+
+.assignment-choices{max-height:340px;overflow:auto;margin:12px 0;border:1px solid var(--border,#ddd);border-radius:8px}
+.assignment-choice{display:flex;gap:12px;padding:12px;border-bottom:1px solid var(--border,#ddd);cursor:pointer;align-items:flex-start}
+.assignment-choice input{width:auto;margin-top:4px}
+.semester-course[draggable="true"]{cursor:grab}
+.semester-col.drop-target{outline:3px solid #4185a9;outline-offset:2px}

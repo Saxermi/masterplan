@@ -175,3 +175,16 @@ selected events; locks and duplicates are checked. Empty scenarios now open corr
 Science in Perspective uses the shared catalogue section; Scientific Works in Mathematics/Physics
 are found by their official module numbers. Eligible MSc core electives display the matching Master
 programmes. Run `python3 tests/browser_semester_flow.py` for the synthetic regression workflow.
+
+### Batch allocation and moving courses
+
+The assignment form provides a searchable checkbox shortlist with multi-selection, select-visible
+and clear-selection actions. Modules already allocated or completed in the chosen target plan are
+hidden. Alternative scenarios retain independent choices. A batch is validated and saved together;
+its modules can keep their individual suggested credit categories.
+
+Unlocked semester cards can be dragged to another semester or plan. Course/semester locks,
+duplicate allocations and confirmed offerings are checked again when saving. Selected times reset
+when the semester changes. The existing “Change allocation” editor remains available for keyboard
+and touch workflows. Developer regression: `node --test tests/*.test.cjs` and
+`python3 tests/browser_bulk.py` (native Chromium drag-and-drop, synthetic data only).

@@ -21,7 +21,7 @@ jobs:
       - name: Python unit and HTTP integration tests
         run: python -m unittest discover -s tests -v
       - name: Degree and grade allocation tests
-        run: node --test tests/study-rules.test.cjs
+        run: node --test tests/*.test.cjs
   browser:
     runs-on: ubuntu-latest
     steps:
@@ -38,3 +38,4 @@ jobs:
           python tests/browser_smoke.py
           python tests/browser_allocations.py
           python tests/browser_semester_flow.py
+          python tests/browser_bulk.py
