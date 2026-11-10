@@ -66,7 +66,7 @@ def main():
                     page.wait_for_function("async(n)=>(await (await fetch('/api/state')).json()).interests.some(c=>c.number===n)", arg=number)
                     page.locator('[data-nav="semesters"]').click()
                     interest = page.evaluate("async(n)=>(await (await fetch('/api/state')).json()).interests.find(c=>c.number===n).id", number)
-                    page.locator('#assign-course-form [name="interest"]').select_option(interest)
+                    page.locator(f'#assign-course-form input[name="interest"][value="{interest}"]').check()
                     page.locator('#assign-course-form [name="semester"]').select_option('2026W')
                     page.locator('[data-action="assign-interest"]').click()
                     page.wait_for_function("async(n)=>(await (await fetch('/api/state')).json()).actualPlan.courses.some(c=>c.number===n)", arg=number)

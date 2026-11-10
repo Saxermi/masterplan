@@ -67,6 +67,16 @@ class TestAllocationStorage(unittest.TestCase):
                     s=document();s[key]=value;self.assertFalse(valid_state(s))
         s=document();del s['actualPlan']['courses'][0]['events'];self.assertFalse(valid_state(s))
 
+    def test_seminar_category_shortlist_and_canonical_course_roundtrip(self):
+        s=document()
+        s['interests']=[{'id':'physics-seminar','title':'Seminar in Physics','ects':4,'suggestedRole':'specialisation-seminar','offerings':{}}]
+        s['actualPlan']['courses'][0].update(role='specialisation',subtype='seminar',ects=4)
+        self.assertTrue(valid_state(s))
+        with tempfile.TemporaryDirectory() as d:
+            store=Store(d);saved=store.save(s)
+            self.assertEqual(store.get()['actualPlan']['courses'][0]['subtype'],'seminar')
+            self.assertEqual(saved['interests'][0]['suggestedRole'],'specialisation-seminar')
+
     def test_invalid_events(self):
         base={'day':0,'start':'08:15','end':'10:00'}
         for field,values in {'day':[-1,7,True,'0',None], 'start':['24:00','9:00','12:00',None,{}],

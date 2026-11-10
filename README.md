@@ -157,3 +157,50 @@ waits for the validated local dump; it does not issue broad compact-API searches
 ![Offline catalogue status and update check (synthetic demo)](docs/screenshots/08-offline-catalog.jpg)
 
 The screenshot uses mocked, non-personal data. The UI reports whether the local SQLite dump is available and allows an explicit metadata check without downloading an unchanged archive.
+
+### Semester and allocation workflow update
+
+The catalogue defaults to a concrete semester. Its recent choices span the previous two, current
+and next two semesters; an optional second concrete semester allows browsing autumn and spring
+together. Catalogue results and new linked allocations require exact confirmed offerings; historic
+proxies are no longer generated for new selections. Existing proxy records are preserved and labeled
+as historical references. Manual modules remain freely schedulable.
+
+Semester columns include removal with lock checks and confirmation for populated semesters;
+shortlist entries and completed history are retained. The timetable includes an inline assignment
+form and a manual-time form with a direct VVZ link for the selected module. Course cards provide
+“Change allocation” to adjust the target plan, semester and credit category. Changing semester clears
+selected events; locks and duplicates are checked. Empty scenarios now open correctly.
+
+Science in Perspective uses the shared catalogue section; Scientific Works in Mathematics/Physics
+are found by their official module numbers. Eligible MSc core electives display the matching Master
+programmes. Run `python3 tests/browser_semester_flow.py` for the synthetic regression workflow.
+
+### Batch allocation and moving courses
+
+The assignment form provides a searchable checkbox shortlist with multi-selection, select-visible
+and clear-selection actions. Modules already allocated or completed in the chosen target plan are
+hidden. Alternative scenarios retain independent choices. A batch is validated and saved together;
+its modules can keep their individual suggested credit categories.
+
+Unlocked semester cards can be dragged to another semester or plan. Course/semester locks,
+duplicate allocations and confirmed offerings are checked again when saving. Selected times reset
+when the semester changes. The existing “Change allocation” editor remains available for keyboard
+and touch workflows. Developer regression: `node --test tests/*.test.cjs` and
+`python3 tests/browser_bulk.py` (native Chromium drag-and-drop, synthetic data only).
+
+### Spezialisierungsseminar / Specialisation seminar
+
+Die Anrechnungskategorie **Spezialisierungsseminar** ist direkt bei Zuweisung, Mehrfachauswahl,
+manueller Erfassung und nachträglicher Zuordnungsänderung verfügbar. Im englischen Interface heißt
+sie **Specialisation seminar**. Intern bleibt sie Teil der Spezialisierung: ECTS zählen dort, das
+Seminar zählt einmal und ersetzt keine der vier Vorlesungen. Seminar-Noten bleiben aus der
+Schlussnotenformel ausgeschlossen. Bestehende Einträge mit `role=specialisation, subtype=seminar`
+bleiben kompatibel. Fehlt die Art, wird das Wort „Seminar“ im Titel als Hinweis verwendet; eine
+explizite Eintragung als Vorlesung hat Vorrang.
+
+The category **Specialisation seminar** is available in assignment, batch selection, manual entry
+and the allocation editor. It remains part of specialisation credits while counting separately from
+its four lectures. Seminar grades are excluded from the final-grade formula. Existing seminar
+records remain compatible. Missing subtype metadata can use “Seminar” in the title as a hint;
+an explicit lecture classification takes precedence. Academic field recognition remains provisional.

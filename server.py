@@ -73,7 +73,7 @@ CATEGORY_PATHS = {
 
 
 def recent_semesters(now=None):
-    """Last two + current + next ETH semesters, Europe/Zurich."""
+    """Last two + current + next two ETH semesters, Europe/Zurich."""
     now = now or datetime.now(ZoneInfo("Europe/Zurich"))
     year, month = now.year, now.month
     current = f"{year if month >= 2 else year - 1}{'W' if month >= 9 or month == 1 else 'S'}"
@@ -81,7 +81,7 @@ def recent_semesters(now=None):
     for y in range(year - 3, year + 3):
         terms.extend([f"{y}S", f"{y}W"])
     i = terms.index(current)
-    return terms[i - 2:i + 2]
+    return terms[i - 2:i + 3]
 
 
 def build_catalog_query(query, programme, category, specialisations=None):
@@ -258,7 +258,7 @@ def valid_state(x):
             return False
         if 'ects' in interest and not _credits(interest['ects']):
             return False
-        if not _text(interest.get('number', ''), 60) or interest.get('suggestedRole', 'extra') not in (*CATEGORY_PATHS, 'extra'):
+        if not _text(interest.get('number', ''), 60) or interest.get('suggestedRole', 'extra') not in (*CATEGORY_PATHS, 'extra', 'specialisation-seminar'):
             return False
         offerings = interest.get('offerings', {})
         if not isinstance(offerings, dict) or len(offerings) > 100 or any(not _term(k) or type(v) is not int or not 1 <= v <= 1_000_000_000 for k, v in offerings.items()):
@@ -330,6 +330,13 @@ class Store:
                 raise ValueError("Invalid MasterPlan data format")
             if incoming.get("revision") != old["revision"]:
                 raise RuntimeError("Revision conflict: reload before saving")
+            previous = { (p['id'], c['id']): c for p in [old['actualPlan'], *old['plans']] for c in p['courses'] }
+            for plan in [incoming['actualPlan'], *incoming['plans']]:
+                for course in plan['courses']:
+                    before = previous.get((plan['id'], course['id']))
+                    if course.get('unitId') and course.get('sourceSemester') != course['semester']:
+                        if not before or any(before.get(k) != course.get(k) for k in ('semester', 'unitId', 'sourceSemester')):
+                            raise ValueError('Course is not offered in the selected semester')
             new = copy.deepcopy(incoming)
             new["revision"] = old["revision"] + 1
             self._atomic(self.folder / "masterplan.json", new)
@@ -642,7 +649,7 @@ class Handler(BaseHTTPRequestHandler):
                 semester = params.get("semester", [""])[0]
                 selected_specs = [x for x in params.get("spec", [""])[0].split("|") if x]
                 vvz_query = build_catalog_query(query, programme, category, selected_specs)
-                if semester != "recent" and not re.fullmatch(r"\d{4}[SW]", semester):
+                if semester != "recent" and not re.fullmatch(r"\d{4}[SW](?:,\d{4}[SW])?", semester):
                     raise ValueError("Invalid semester")
                 limit = min(60, max(1, int(params.get("limit", ["40"])[0])))
                 offset = max(0, min(10000, int(params.get("offset", ["0"])[0])))

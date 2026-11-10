@@ -2,6 +2,10 @@
 (function(root) {
   'use strict';
   const roles=['core','specialisation','elective','case','project','sip','thesis','scientific','extra','requirement'];
+  const seminarRole='specialisation-seminar';
+  function specialisationSubtype(c){return c.subtype||(/\bseminar\b/i.test(c.title||'')?'seminar':'lecture');}
+  function allocationRole(c){return c.role==='specialisation'&&specialisationSubtype(c)==='seminar'?seminarRole:c.role;}
+  function allocationCategory(role){return role===seminarRole?{role:'specialisation',subtype:'seminar'}:role==='specialisation'?{role,subtype:'lecture'}:{role,subtype:undefined};}
   const statuses=['interested','planned','enrolled','completed'];
   const defaults=[
     {id:'total',minEcts:120,warningEcts:130}, {id:'main',minEcts:74},
@@ -81,8 +85,8 @@
           active.filter(c=>c.role===(key==='spec'?'specialisation':key));
         if(key==='scientific')selected=courses.filter(c=>c.role==='scientific'&&c.status==='completed'&&c.creditApproved!==false);
         const metrics={ects:key==='scientific'?0:sum(selected),count:selected.length,
-          lectures:selected.filter(c=>c.role==='specialisation'&&c.subtype!=='seminar').length,
-          seminars:selected.filter(c=>c.role==='specialisation'&&c.subtype==='seminar').length,
+          lectures:selected.filter(c=>c.role==='specialisation'&&specialisationSubtype(c)!=='seminar').length,
+          seminars:selected.filter(c=>c.role==='specialisation'&&specialisationSubtype(c)==='seminar').length,
           numbers:selected.map(number),courseIds:selected.map(c=>c.id)};
         if(key==='scientific'&&scientificWorksBSc)metrics.count=1;
         const reasons=[];
@@ -149,7 +153,52 @@
     const value=denominator?valid.reduce((s,e)=>s+moduleGrade(e)*weights[e.category],0)/denominator:null;
     return {counts,complete,denominator,value:complete?value:null,invalid,duplicate,conflict};
   }
-  const api={credited,allCourses,uniqueCredits,audit,moduleGrade,calculateFinalGrade};
+
+  function matchesInterest(c,i){
+    return number(i)?number(c)===number(i):c.interestId?c.interestId===i.id:c.id===i.id||(!number(c)&&c.title?.trim().toLowerCase()===i.title?.trim().toLowerCase());
+  }
+  function availableShortlist(state,planId){
+    const plan=[state.actualPlan,...state.plans].find(p=>p.id===planId);
+    if(!plan)return [];
+    const assigned=allCourses(plan,state.history||[]);
+    return state.interests.filter(i=>!assigned.some(c=>matchesInterest(c,i)));
+  }
+  function confirmedOffering(c,term){
+    if(c.offerings?.[term])return c.offerings[term];
+    if(c.unitId&&c.sourceSemester===term)return c.unitId;
+    if(c.unitId||Object.keys(c.offerings||{}).length)throw Error('Kein bestätigtes Angebot im Zielsemester / No confirmed offering in target semester.');
+    return null;
+  }
+  function assignShortlist(state,planId,term,ids,role,idFactory){
+    const plan=[state.actualPlan,...state.plans].find(p=>p.id===planId);
+    if(!plan||!/^\d{4}[SW]$/.test(term)||!ids.length||new Set(ids).size!==ids.length)throw Error('Bitte Module und Zielsemester auswählen / Select modules and target semester.');
+    if(plan.lockedSemesters.includes(term))throw Error('Semester ist gesperrt / Semester is locked.');
+    const available=availableShortlist(state,planId);
+    const records=ids.map(key=>{
+      const i=available.find(i=>i.id===key);
+      if(!i)throw Error('Modul bereits zugewiesen oder nicht verfügbar / Module already assigned or unavailable.');
+      const unit=confirmedOffering(i,term),chosen=role==='suggested'?(i.suggestedRole||'elective'):role,category=allocationCategory(role==='suggested'&&chosen==='specialisation'&&specialisationSubtype(i)==='seminar'?seminarRole:chosen);
+      if(!roles.includes(category.role))throw Error('Ungültige Kategorie / Invalid category.');
+      return {id:idFactory(),interestId:i.id,number:i.number||'',title:i.title,ects:i.ects||0,semester:term,...category,specialisation:category.role==='specialisation'?(i.specialisation||plan.specialisation||undefined):undefined,status:'planned',
+        unitId:unit,sourceSemester:unit?term:null,offerings:i.offerings||{},proxy:false,events:[],locked:false,reviewAvailable:!!i.reviewAvailable,creditApproved:category.role==='extra'?false:null};
+    });
+    if(records.some((c,index)=>records.slice(0,index).some(other=>matchesInterest(other,{...c,id:c.interestId}))))throw Error('Doppelte Module in Auswahl / Duplicate modules in selection.');
+    if(!plan.semesters.includes(term)){plan.semesters.push(term);plan.semesters.sort();}
+    plan.courses.push(...records);
+  }
+  function moveAllocation(state,fromId,courseId,toId,term,role){
+    const plans=[state.actualPlan,...state.plans],from=plans.find(p=>p.id===fromId),to=plans.find(p=>p.id===toId),c=from?.courses.find(c=>c.id===courseId);
+    if(!c||!to||!/^\d{4}[SW]$/.test(term))throw Error('Ungültiges Ziel / Invalid target.');
+    if(c.locked||from.lockedSemesters.includes(c.semester)||to.lockedSemesters.includes(term))throw Error('Kurs oder Semester ist gesperrt / Course or semester is locked.');
+    const unit=confirmedOffering(c,term);
+    if(to.courses.some(x=>!(from===to&&x.id===c.id)&&matchesInterest(x,{...c,id:c.interestId||c.id})))throw Error('Modul im Zielplan bereits zugewiesen / Module already assigned in target plan.');
+    if(role&&!roles.includes(allocationCategory(role).role))throw Error('Ungültige Kategorie / Invalid category.');
+    const record={...c,...(role?allocationCategory(role):{}),semester:term,events:term===c.semester?c.events:[],unitId:unit,sourceSemester:unit?term:null,proxy:false};
+    from.courses=from.courses.filter(x=>x.id!==c.id);
+    if(!to.semesters.includes(term)){to.semesters.push(term);to.semesters.sort();}
+    to.courses.push(record);
+  }
+  const api={specialisationSubtype,allocationRole,allocationCategory,matchesInterest,availableShortlist,confirmedOffering,assignShortlist,moveAllocation,credited,allCourses,uniqueCredits,audit,moduleGrade,calculateFinalGrade};
   root.MasterPlanRules=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(globalThis);

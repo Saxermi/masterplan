@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -176,16 +177,20 @@ class LocalCatalog:
                                     for cat in paths for name in specialisations]
             else:
                 section_variants = [[part for part in (path, cat) if part] for cat in paths]
+        if category == 'sip':
+            section_variants = [['science in perspective']]
+        if category == 'scientific':
+            section_variants = []
         if category == "specialisation" and not specialisations:
             return {"results": [], "total": 0, "upstreamTotal": 0, "source": "local-dump",
                     "recentSemesters": window, "eligibleCoreElective": False}
-        cutoff = window[0] if semester == "recent" else min(window[0], semester)
-        ceiling = window[-1] if semester == "recent" else semester
-        filters = ["u.number IS NOT NULL", "u.semkez >= ?", "u.semkez <= ?"]
-        values = [cutoff, ceiling]
-        if semester != "recent":
-            filters.append("SUBSTR(u.semkez,5,1)=?")
-            values.append(semester[-1])
+        terms = window if semester == 'recent' else semester.split(',')
+        if not 1 <= len(terms) <= 5 or any(not re.fullmatch(r'\d{4}[SW]', t) for t in terms):
+            raise ValueError('Invalid semester selection')
+        filters = ["u.number IS NOT NULL", "u.semkez IN (" + ','.join('?' for _ in terms) + ")"]
+        values = list(terms)
+        if category == 'scientific':
+            filters.append("u.number IN ('401-2000-00L','402-2000-00L')")
         # Resolve section paths once, then use the section->unit index. A
         # correlated path scan for every learning unit is prohibitively slow.
         scope_sql = []
@@ -209,13 +214,6 @@ class LocalCatalog:
                     filters.append("(LOWER(COALESCE(u.title,'')) LIKE ? ESCAPE '\\' OR "
                                    "LOWER(COALESCE(u.title_english,'')) LIKE ? ESCAPE '\\')")
                     values.extend([_path_like(word), _path_like(word)])
-        # A course reclassified in the requested term must not leak into the old
-        # category through a historic entry. Proxies only apply if no newer
-        # offering in this season exists.
-        filters.append("NOT EXISTS (SELECT 1 FROM learningunit newer WHERE newer.number=u.number "
-                       "AND newer.semkez>u.semkez AND newer.semkez<=? "
-                       "AND SUBSTR(newer.semkez,5,1)=SUBSTR(u.semkez,5,1))")
-        values.append(ceiling)
         where = " AND ".join(filters)
         with self.lock:
             self._ensure_indexes()
@@ -233,14 +231,22 @@ class LocalCatalog:
                     semesters = {}
                     for r in records:
                         semesters.setdefault(r["semkez"], r["id"])
-                    wanted = next((term for term in reversed(window) if term in semesters), None) if semester == "recent" else semester
-                    offering = select_offering(semesters, wanted, cutoff) if wanted else None
+                    wanted = max(semesters)
+                    offering = select_offering(semesters, wanted) if wanted else None
                     if not offering or not offering.get("unit_id"):
                         continue
                     rec = next(r for r in records if r["id"] == offering["unit_id"])
                     rating = con.execute("SELECT (recommended+engaging+difficulty+effort+resources)/5.0 "
                                          "FROM rating WHERE course_number=?", (number,)).fetchone()
-                    results.append({"number": number, "title": rec["title"], "title_english": rec["title_english"],
+                    origins = []
+                    if category == 'eligible-core':
+                        for path in scope:
+                            args = []
+                            predicate = self._path_filter([path, 'core courses'], args)
+                            ids = list(semesters.values())
+                            if con.execute("SELECT 1 FROM unitsectionlink l JOIN sectionpathview p ON p.id=l.section_id WHERE l.unit_id IN (" + ','.join('?' for _ in ids) + ") AND " + predicate + " LIMIT 1", [*ids, *args]).fetchone():
+                                origins.append(path)
+                    results.append({"coreProgrammes": origins, "number": number, "title": rec["title"], "title_english": rec["title_english"],
                                     "credits": rec["credits"], "levels": _json_value(rec["levels"], []),
                                     "language": rec["language"], "rating": round(rating[0], 2) if rating and rating[0] is not None else None,
                                     "semesters": semesters, "offering": offering})
