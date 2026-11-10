@@ -113,7 +113,7 @@ class TestMeetingIntegration(unittest.TestCase):
 
     def test_recent_semester_window(self):
         from datetime import datetime
-        self.assertEqual(recent_semesters(datetime(2026,11,8)),['2025W','2026S','2026W','2027S'])
+        self.assertEqual(recent_semesters(datetime(2026,11,8)),['2025W','2026S','2026W','2027S','2027W'])
 
 
 if __name__ == '__main__':

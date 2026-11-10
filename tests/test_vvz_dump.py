@@ -102,10 +102,10 @@ class TestVvzDump(unittest.TestCase):
         self.assertEqual(x['results'][0]['offering']['unit_id'],111)
         self.assertEqual(self.catalog.unit(111)['groups'][0]['name'],'Exercise 1')
         self.assertEqual(normalize_meetings(self.catalog.meetings(111))[0]['building'],'HG')
-        selected=self.catalog.search('Physics', 'physics-msc','eligible-core',[], '2027S',window,50,0,select_offering)
+        selected=self.catalog.search('Physics', 'physics-msc','eligible-core',[], '2026S',window,50,0,select_offering)
         self.assertEqual(selected['total'],1)
         self.assertEqual(selected['total'],1)
-        self.assertTrue(selected['results'][0]['offering']['proxy'])
+        self.assertFalse(selected['results'][0]['offering']['proxy'])
         self.assertEqual(selected['results'][0]['offering']['source_semester'],'2026S')
         with self.assertRaises(ValueError):
             self.catalog.search('', 'mathematics-bsc','eligible-core',[], 'recent',window,10,0,select_offering)

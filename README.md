@@ -157,3 +157,21 @@ waits for the validated local dump; it does not issue broad compact-API searches
 ![Offline catalogue status and update check (synthetic demo)](docs/screenshots/08-offline-catalog.jpg)
 
 The screenshot uses mocked, non-personal data. The UI reports whether the local SQLite dump is available and allows an explicit metadata check without downloading an unchanged archive.
+
+### Semester and allocation workflow update
+
+The catalogue defaults to a concrete semester. Its recent choices span the previous two, current
+and next two semesters; an optional second concrete semester allows browsing autumn and spring
+together. Catalogue results and new linked allocations require exact confirmed offerings; historic
+proxies are no longer generated for new selections. Existing proxy records are preserved and labeled
+as historical references. Manual modules remain freely schedulable.
+
+Semester columns include removal with lock checks and confirmation for populated semesters;
+shortlist entries and completed history are retained. The timetable includes an inline assignment
+form and a manual-time form with a direct VVZ link for the selected module. Course cards provide
+“Change allocation” to adjust the target plan, semester and credit category. Changing semester clears
+selected events; locks and duplicates are checked. Empty scenarios now open correctly.
+
+Science in Perspective uses the shared catalogue section; Scientific Works in Mathematics/Physics
+are found by their official module numbers. Eligible MSc core electives display the matching Master
+programmes. Run `python3 tests/browser_semester_flow.py` for the synthetic regression workflow.
