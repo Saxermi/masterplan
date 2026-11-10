@@ -15,13 +15,16 @@
     {
       "id": "core",
       "minEcts": 12,
-      "minCourses": 2
+      "minCourses": 2,
+      "maxCourses": 2
     },
     {
       "id": "spec",
       "minEcts": 18,
       "minLectures": 4,
-      "minSeminars": 1
+      "minSeminars": 1,
+      "maxLectures": 4,
+      "maxSeminars": 1
     },
     {
       "id": "elective",
@@ -31,11 +34,15 @@
     {
       "id": "case",
       "minEcts": 6,
-      "minCourses": 2
+      "minCourses": 2,
+      "courseEcts": 3
     },
     {
       "id": "project",
-      "minEcts": 8
+      "minEcts": 8,
+      "minCourses": 1,
+      "maxCourses": 1,
+      "courseEcts": 8
     },
     {
       "id": "sip",
@@ -43,11 +50,15 @@
     },
     {
       "id": "thesis",
-      "minEcts": 30
+      "minEcts": 30,
+      "minCourses": 1,
+      "maxCourses": 1,
+      "courseEcts": 30
     },
     {
       "id": "total",
-      "minEcts": 120
+      "minEcts": 120,
+      "warningEcts": 130
     },
     {
       "id": "scientific",
@@ -62,7 +73,23 @@
     "elective": 1,
     "masterThesis": 4
   },
-  "provenance": [],
+  "provenance": [
+    {
+      "source": "https://ethz.ch/content/dam/ethz/special-interest/study-programme-websites/ms-compsci-and-eng-dam/documents/master-programme/MSc-CSE-Guidelines.pdf",
+      "page": 9,
+      "text": "Two core courses; four lectures and a seminar; at least two electives. Minimum credit figures apply per category. Achievements beyond the maximum 130 degree credit points can be listed separately. Reviewed 2026-11-10; 130 ECTS is warning-only in MasterPlan."
+    },
+    {
+      "source": "https://ethz.ch/content/dam/ethz/special-interest/study-programme-websites/ms-compsci-and-eng-dam/documents/master-programme/MSc-CSE-Guidelines.pdf",
+      "page": 20,
+      "text": "Case Studies Seminar yields three ECTS credits and must be attended and passed twice."
+    },
+    {
+      "source": "https://ethz.ch/content/dam/ethz/special-interest/study-programme-websites/ms-compsci-and-eng-dam/documents/master-programme/MSc-CSE-Guidelines.pdf",
+      "page": 21,
+      "text": "At least one semester project is required, worth 8 credits. Additional semester projects are counted as electives."
+    }
+  ],
   "createdBy": "manual-starter; replace via validated agent output",
   "electiveEligibility": {
     "policy": "core-courses-of-listed-eth-master-programmes",

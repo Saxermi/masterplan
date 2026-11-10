@@ -35,7 +35,7 @@ The default bind address is **`127.0.0.2:8765`** (as requested). If this loopbac
 - Complete event reconciliation and automatic updates of previously chosen personal slots remain conservative: VVZ schedule changes are flagged, but never silently overwrite selected or manual slots. Some by-appointment or date-specific events have no weekly slot and must be handled manually.
 - Cloud merge/conflict resolution between two simultaneous editing devices. **Do not edit the same cloud-synced folder from two computers at once**; sync fully before switching.
 - Cloud-hosted deployment, automatic desktop installers, production accounts and hosted multi-user security. This server is **local loopback only**.
-- Comprehensive unit/integration/browser test suites and continuous release/distribution.
+- Scheduled live-upstream contract tests, a broad browser/OS matrix, accessibility auditing and continuous release/distribution. Allocation, storage, HTTP and synthetic browser regressions run in CI.
 
 
 ## Feedback revision (November 2026) / Überarbeitung
@@ -81,9 +81,20 @@ Default: `./user-data/masterplan.json` and (only if grades are saved) `./user-da
 
 An external agent should produce `guidelines/cse-guidelines.json` conforming to `guidelines/cse-guidelines.schema.json`. Each confidently extracted rule should include provenance (page and document source), regulation applicability and extracted text. The checked starter file has `sourceChecked: false`, and unknown data must not be invented. The app reads the configured thresholds but **does not automatically grant official academic recognition**. Do not commit private documents or personal records.
 
+## Allocation audit and feature inventory
+
+See the [implemented features and remaining gaps](docs/feature-inventory.md) and
+[allocation validation report](docs/allocation-validation.md). The audit checks course counts,
+category credits, duplicate/Bachelor/admission credit reuse, seminar composition and grade selection.
+**More than 130 ECTS is allowed and triggers only a transcript-selection warning.** Extra electives
+cannot replace missing required categories. Incomplete drafts remain saveable.
+
+The manual course editor supports specialisation lecture/seminar and Bachelor-credit-use fields.
+The checks are provisional; personal recognition and full major/minor applicability still require review.
+
 ## Development / Entwicklung
 
-Python standard library only. Run tests with `python3 -m unittest discover -s tests -v`. To adjust listening port, use `sh run.sh --port 9000`. To stay on loopback, do not change the bind address to `0.0.0.0` unless you add authentication and proper security controls. The built-in HTTP server is **not suitable for untrusted public hosting**.
+Python standard library only. Run Python tests with `python3 -m unittest discover -s tests -v` and allocation/grade tests with `node --test tests/study-rules.test.cjs` (Node 22+ is a developer-test dependency only). Browser regression commands are listed in the allocation validation report. To adjust listening port, use `sh run.sh --port 9000`. To stay on loopback, do not change the bind address to `0.0.0.0` unless you add authentication and proper security controls. The built-in HTTP server is **not suitable for untrusted public hosting**.
 
 Project tree:
 

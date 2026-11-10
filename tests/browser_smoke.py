@@ -6,6 +6,7 @@ Does not contact VVZAPI or touch user-data.
 from __future__ import annotations
 import json
 import os
+import shutil
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from sys import path as syspath
@@ -18,11 +19,11 @@ def main():
     data=initial_state()
     rules=json.loads((ROOT/'guidelines/cse-guidelines.json').read_text(encoding='utf-8'))
     with sync_playwright() as p:
-        browser=p.chromium.launch(headless=True,executable_path=os.getenv('CHROMIUM','/usr/bin/chromium'),args=['--no-sandbox'])
+        browser=p.chromium.launch(headless=True,executable_path=os.getenv('CHROMIUM') or shutil.which('chromium'),args=['--no-sandbox'])
         page=browser.new_page(viewport={'width':1400,'height':970})
         errors=[]
         page.on('pageerror',lambda err: errors.append(str(err)))
-        html=(ROOT/'web/index.html').read_text(encoding='utf-8').replace('<script type="module" src="/app.js"></script>','').replace('<link rel="stylesheet" href="/styles.css">','')
+        html=(ROOT/'web/index.html').read_text(encoding='utf-8').replace('<script type="module" src="/app.js"></script>','').replace('<link rel="stylesheet" href="/styles.css">','').replace('<script src="/study-rules.js"></script>','')
         page.set_content(html)
         page.add_style_tag(content=(ROOT/'web/styles.css').read_text(encoding='utf-8'))
         page.evaluate('''([state,rules])=>{
@@ -46,6 +47,7 @@ def main():
             return new Response(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
           }
         }''',[data,rules])
+        page.add_script_tag(content=(ROOT/'web/study-rules.js').read_text(encoding='utf-8'))
         page.add_script_tag(content=(ROOT/'web/app.js').read_text(encoding='utf-8'))
         page.set_default_timeout(7000)
         print('ready',flush=True)

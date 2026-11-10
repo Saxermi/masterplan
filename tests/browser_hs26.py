@@ -7,6 +7,7 @@ No upstream requests: official public schedule responses are seeded from fixture
 import argparse
 import json
 import os
+import shutil
 from pathlib import Path
 import sys
 import tempfile
@@ -45,7 +46,7 @@ def main():
         thread.start()
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True, executable_path=os.getenv('CHROMIUM', '/usr/bin/chromium'), args=['--no-sandbox'])
+                browser = p.chromium.launch(headless=True, executable_path=os.getenv('CHROMIUM') or shutil.which('chromium'), args=['--no-sandbox'])
                 page = browser.new_page(viewport={'width': 1440, 'height': 1000})
                 errors = []
                 page.on('pageerror', lambda err: errors.append(str(err)))

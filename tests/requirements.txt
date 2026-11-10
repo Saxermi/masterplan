@@ -1,0 +1,2 @@
+# Optional development-only dependency; the app itself uses Python's standard library.
+playwright==1.62.0
