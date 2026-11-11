@@ -272,3 +272,10 @@ available in both languages. See the [workflow and JSON examples](docs/analytics
 [preparation prompts DE/EN](docs/prompts-preparation.md). The timetable now shows event duration,
 quarter-hour starts and overlapping meetings accurately. `python tests/browser_analytics.py`
 checks these flows with synthetic data.
+
+Statistics imports now retain conflicting source records and let you choose which one to use,
+including ambiguous historical semesters. The optional `passRate` field and DE/EN extraction prompts
+also capture the overall module pass percentage (0–100; unknown `null`). In the calendar, drag across
+a day to mark a time range, then select a semester module and save in the picker. Touch and keyboard
+entry are supported. See the [workflow update](docs/analytics-and-imports.md) and
+[review screenshots](docs/screenshots/conflicts-calendar.md).

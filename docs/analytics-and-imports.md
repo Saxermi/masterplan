@@ -88,3 +88,45 @@ SCREENSHOT_DIR=docs/screenshots python tests/browser_analytics.py
 This launches Chromium against an isolated temporary HTTP server and synthetic catalogue/plan.
 It exercises imports, encrypted roundtrip, exports, formulas, persisted notes/assessments and calendar
 geometry. It never reads personal grade or plan files.
+
+## Update: Konfliktauswahl, Bestehensquote und direkte Kalendermarkierung
+
+Doppelte Statistikzeilen werden nicht mehr verworfen. In der Importvorschau lässt sich für
+jede Kursnummer und jedes Prüfungssemester der gewünschte Eintrag auswählen. Gibt es für einen
+geplanten Kurs mehrere historische Semester, wähle die gewünschte Referenz separat aus. Die
+Auswahl zeigt Mittelwert, Standardabweichung, Studierendenzahl, Bestehensquote und Quelle.
+Alle Alternativen bleiben zusammen mit der Auswahl im verschlüsselten Datensatz erhalten.
+Offene Konflikte müssen vor dem Übernehmen aufgelöst werden. Beim Erstellen eines Szenarios
+für einen anderen Studienplan können weitere Referenzentscheidungen nötig sein. Die Auswahl
+kann dort ebenfalls geändert werden; bestehende Szenarien behalten ihre kopierten Annahmen.
+
+`passRate` enthält die gesamte Bestehensquote der Modulabschlussbewertung in Prozent (0–100,
+z. B. `85` für 85 %), unabhängig von Mittelwert/Standardabweichung. Ein fehlender Wert bleibt
+`null`; ältere JSON-Dateien ohne dieses Feld bleiben gültig. Die PDF-Prompts verlangen die
+Bezugsgruppe und unterscheiden Gesamtquote von Teilprüfungsquoten. Eine Berechnung ist nur
+aus dokumentierten bestandenen/insgesamt bewerteten Ergebnissen erlaubt.
+
+Im Stundenplan direkt in der Kalenderfläche klicken und ziehen. Der Bereich wird in
+Viertelstunden markiert; nach dem Loslassen erscheint ein Menü mit den Modulen des Zielsemesters,
+Beginn/Ende und Raumfeldern. Modul auswählen und speichern. Weitere Markierungen desselben Moduls
+fügen zusätzliche Termine hinzu. Escape/Abbrechen verwirft die Markierung. Gesperrte Module sind
+nicht auswählbar. Eine Zeitzelle lässt sich auch mit Enter/Leertaste öffnen und per Formular anpassen.
+Die bisherige manuelle Eingabe und Modul-Drag-and-drop bleiben verfügbar.
+
+## Update: conflict choices, pass rate and time-first calendar
+
+Duplicate statistic rows now offer explicit source choices in the import preview. When several
+historical terms match a planned module, choose the reference for that target semester. Alternatives
+and selections remain together in the encrypted dataset. Resolve conflicts before applying an import;
+a different scenario plan can require additional term choices. Changing a dataset choice affects
+future scenario creation; existing scenarios retain their copied assumptions.
+
+The optional `passRate` is the overall final module pass percentage on a 0–100 scale, e.g. `85`
+means 85%. Unknown is `null`; old JSON remains valid. Both PDF prompts request the denominator and
+forbid inferring a pass rate from the mean/deviation or substituting component pass rates.
+
+Click and drag directly across a calendar day to select a time range, then choose a module in the
+picker and save. Selection snaps to 15 minutes, supports reverse dragging and can be edited in the
+form. Repeating the flow adds more weekly meetings. Escape/Cancel discards the selection. Only
+unlocked modules assigned to the current plan/semester can receive meetings. Keyboard activation
+of a time cell opens the same picker. The older manual and module-first flows remain available.

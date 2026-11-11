@@ -89,3 +89,15 @@ multiple pending assessments use a common hypothetical grade. Notes and advisory
 public plan data, distinct from the encrypted grade/statistics vault.
 
 See [the workflow](analytics-and-imports.md) for DE/EN prompts, JSON examples and screenshot reproduction.
+
+## Statistics conflict and calendar selection update
+
+Statistics duplicates are retained with explicit per-source choices; ambiguous historical matches
+have per-course/target-term selectors during import and later scenario creation. Source records,
+selections and optional overall module `passRate` (0–100%, unknown null) persist in the encrypted
+vault. Both PDF extraction prompts include the pass-rate denominator and final-module semantics.
+
+The main timetable now supports time-first pointer/touch range selection with 15-minute snapping,
+an accessible module/time/location picker, cancellation and repeated meetings. Keyboard activation
+opens the same picker. Source choices and selections remain scoped to their dataset, course and term;
+calendar choices are restricted to unlocked modules of the selected study plan and semester.
