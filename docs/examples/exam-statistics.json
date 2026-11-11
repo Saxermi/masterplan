@@ -10,6 +10,7 @@
       "mean": 4.5,
       "sampleSize": 120,
       "stddev": 0.7,
+      "passRate": 85,
       "source": {
         "document": "Document name",
         "page": 3,

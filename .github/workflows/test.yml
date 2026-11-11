@@ -46,3 +46,4 @@ jobs:
           python tests/browser_history_details.py
           python tests/browser_grades.py
           python tests/browser_analytics.py
+          python tests/browser_conflicts_calendar.py
