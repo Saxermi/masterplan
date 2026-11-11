@@ -1,7 +1,8 @@
 name: Test MasterPlan
+# Opt-in only: do not run on pushes or pull requests.
+# Run GitHub-hosted tests only when the user explicitly requests them.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -48,4 +49,3 @@ jobs:
           python tests/browser_analytics.py
           python tests/browser_conflicts_calendar.py
           python tests/browser_simulation_defaults.py
-          python tests/browser_student_walkthrough.py

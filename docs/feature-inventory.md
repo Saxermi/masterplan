@@ -27,7 +27,7 @@ local application on this branch; it does not imply official ETH academic recogn
 | Input integrity | Structured API/import checks for credits, status, roles, IDs, semesters, history, events and shortlist metadata; invalid input leaves stored data unchanged | Imported academic classifications are still user assertions |
 | Interface | English/German, light/dark, responsive layout, PWA manifest | No complete translation of generated diagnostic text; no offline service worker or installable desktop package |
 | Guidelines | Editable JSON/schema, rule provenance, configured counts/credits/exclusions/grade weights | No validated PDF extraction agent, personal applicability engine or legally binding degree audit; `sourceChecked` remains false |
-| Tests | Python unit/HTTP integration suite; dependency-free JavaScript allocation/grade suite; browser smoke and invalid-allocation tests in CI; optional real-dump HS26 test | No scheduled live upstream contract monitoring, broad browser/OS matrix or full accessibility audit |
+| Tests | Python unit/HTTP integration suite; dependency-free JavaScript allocation/grade suite; local browser smoke and invalid-allocation tests; optional real-dump HS26 test | No scheduled live upstream contract monitoring, broad browser/OS matrix or full accessibility audit |
 
 ## Priority gaps
 
