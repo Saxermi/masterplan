@@ -34,21 +34,66 @@
       // Actual assessment structure/known results are authoritative. Assumptions only fill gaps.
       result.parts=(real.parts||[]).map((p,index)=>{const simulation=(draft.parts||[]).find(x=>p.id&&x.id===p.id)||draft.parts?.find(x=>x.name===p.name)||draft.parts?.[index];return {...p,id:p.id||`part-${index}`,value:p.value??null,estimate:p.value!=null?null:simulation?.estimate??null,actualLocked:p.value!=null,structureLocked:true};});
       const knownBonus=real.bonusKnown??(real.bonus!=null);result.bonus=knownBonus?(real.bonus??0):(draft.bonus??0);result.bonusLocked=knownBonus;
-      if(draft.statisticalGrade!=null&&result.parts.some(p=>p.value==null)){
-        const estimate=forecast(result,draft.statisticalGrade);
+      const target=draft.assumedModuleGrade??draft.statisticalGrade;
+      if(target!=null&&result.parts.some(p=>p.value==null)){
+        const estimate=forecast(result,target);
         result.statisticUnreachable=!estimate.valid||estimate.reachable===false||estimate.required==null||estimate.required>6;
         result.parts=result.parts.map(p=>p.value!=null?p:{...p,estimate:result.statisticUnreachable?null:Math.max(1,estimate.required)});
       }
     }
     return result;
   }
+  function manualAssumption(entry){return !!entry&&(entry.assumptionMode==='manual'||mark(entry.overrideGrade)||!!entry.formula||!mark(entry.statisticalGrade)&&(entry.parts||[]).some(p=>mark(p.estimate)));}
+  function assumptionDraft(c,stored,fallbackGrade){
+    const draft=stored?structuredClone(stored):baseEntry(c);
+    delete draft.assumedModuleGrade;
+    if(manualAssumption(draft)){
+      draft.assumptionSource='manual';
+      if(mark(draft.overrideGrade)){draft.assumedModuleGrade=draft.overrideGrade;draft.parts=baseEntry(c).parts;draft.parts[0].estimate=draft.overrideGrade;}
+      return draft;
+    }
+    if(mark(draft.statisticalGrade)){draft.assumptionSource=draft.statistics?'statistics':'import';draft.assumedModuleGrade=draft.statisticalGrade;draft.parts=baseEntry(c).parts;draft.parts[0].estimate=draft.statisticalGrade;return draft;}
+    if(mark(fallbackGrade)){draft.assumptionSource='fallback';draft.assumedModuleGrade=fallbackGrade;draft.parts=baseEntry(c).parts;draft.parts[0].estimate=fallbackGrade;return draft;}
+    draft.assumptionSource='unknown';return draft;
+  }
+  function scenarioEntry(c,scenario,realEntries){
+    const draft=assumptionDraft(c,scenario.entries[key(c)],scenario.fallbackGrade),result=simulationEntry(c,draft,realEntries,scenario.useActual??(scenario.planId==='actual'));
+    if(result.actualMatched&&forecast(result,null).value!=null)result.assumptionSource='actual';
+    return result;
+  }
+  function updateSigma(scenario,courses,factor,selectedKeys){
+    if(!numeric(factor)||Math.abs(factor)>10)throw Error('Ungültiger Faktor · Invalid factor');
+    const X=typeof module!=='undefined'&&module.exports?require('./exchange.js'):root.MasterPlanExchange;
+    const updates=[],selected=new Set(selectedKeys),summary={updated:0,preserved:0};
+    for(const c of courses){const k=key(c),old=scenario.entries[k];if(!selected.has(k))continue;
+      if(!old?.statistics||manualAssumption(old)){summary.preserved++;continue;}
+      const grade=X.statisticalGrade(old.statistics,factor);
+      if(grade==null){summary.preserved++;continue;}
+      const next={...structuredClone(old),...baseEntry(c),statistics:structuredClone(old.statistics),assumptionMode:'statistics',statisticalGrade:grade,sigmaFactor:factor};next.parts[0].estimate=grade;updates.push([k,next]);
+    }
+    for(const [k,next] of updates)scenario.entries[k]=next;scenario.sigmaFactor=factor;summary.updated=updates.length;return summary;
+  }
+  function setFallback(scenario,value){if(value!=null&&!mark(value))throw Error('Note muss zwischen 1 und 6 liegen · Grade must be between 1 and 6');scenario.fallbackGrade=value;}
+  function setOverride(scenario,c,value){
+    if(!mark(value))throw Error('Note muss zwischen 1 und 6 liegen · Grade must be between 1 and 6');
+    const old=scenario.entries[key(c)],next=baseEntry(c);if(old?.statistics)next.statistics=structuredClone(old.statistics);if(old?.importedScenario)next.importedScenario=structuredClone(old.importedScenario);
+    next.assumptionMode='manual';next.overrideGrade=value;next.parts[0].estimate=value;scenario.entries[key(c)]=next;
+  }
+  function resetOverride(scenario,c){
+    const old=scenario.entries[key(c)],next=baseEntry(c);const factor=scenario.sigmaFactor??old?.sigmaFactor??0;
+    if(old?.statistics){const X=typeof module!=='undefined'&&module.exports?require('./exchange.js'):root.MasterPlanExchange;next.statistics=structuredClone(old.statistics);next.statisticalGrade=X.statisticalGrade(next.statistics,factor);next.sigmaFactor=factor;next.assumptionMode='statistics';next.parts[0].estimate=next.statisticalGrade;}
+    else if(old?.importedScenario){next.importedScenario=structuredClone(old.importedScenario);next.statisticalGrade=next.importedScenario.grade??null;next.parts[0].estimate=next.statisticalGrade;}
+    scenario.entries[key(c)]=next;
+  }
   function projectedEntries(entries){return entries.map(e=>({...e,parts:e.parts.map(p=>({...p,value:p.value??p.estimate??null}))}));}
   function scenarioCourses(plan,history){const found=new Map();for(const c of Rules.allCourses(plan,history||[]))if(!found.has(key(c)))found.set(key(c),c);return [...found.values()];}
   function validateVault(value){
     if(!value||!Array.isArray(value.entries)||!value.entries.every(e=>e&&typeof e.name==='string'&&Array.isArray(e.parts)&&e.parts.every(p=>p&&typeof p.name==='string'&&numeric(p.weight)&&p.weight>0&&(p.value==null||mark(p.value))&&(p.estimate==null||mark(p.estimate)))))throw Error('Invalid grade vault');
     if(value.simulations!=null&&(!Array.isArray(value.simulations)||!value.simulations.every(s=>s&&typeof s.id==='string'&&typeof s.name==='string'&&typeof s.planId==='string'&&s.entries&&typeof s.entries==='object'&&!Array.isArray(s.entries))))throw Error('Invalid simulation data');
+    for(const s of value.simulations||[]){if(s.fallbackGrade!=null&&!mark(s.fallbackGrade))throw Error('Invalid fallback grade');for(const e of Object.values(s.entries)){if(e?.overrideGrade!=null&&!mark(e.overrideGrade)||e?.assumptionMode!=null&&!['manual','statistics'].includes(e.assumptionMode))throw Error('Invalid grade assumption');}}
+    if(value.activeSimulation!=null&&typeof value.activeSimulation!=='string')throw Error('Invalid selected scenario');
     if(value.statistics!=null){if(!Array.isArray(value.statistics)||value.statistics.length>100)throw Error('Invalid statistics library');const X=typeof module!=='undefined'&&module.exports?require('./exchange.js'):root.MasterPlanExchange;for(const d of value.statistics){if(d?.kind!=='masterplan-statistics')throw Error('Invalid statistics dataset');X.validate(d);}}
     return {...value,entries:value.entries,simulations:value.simulations||[],statistics:value.statistics||[]};
   }
-  const api={forecast,key,findActual,baseEntry,simulationEntry,projectedEntries,scenarioCourses,validateVault};root.MasterPlanGrades=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+  const api={forecast,key,findActual,baseEntry,simulationEntry,manualAssumption,assumptionDraft,scenarioEntry,updateSigma,setFallback,setOverride,resetOverride,projectedEntries,scenarioCourses,validateVault};root.MasterPlanGrades=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(globalThis);

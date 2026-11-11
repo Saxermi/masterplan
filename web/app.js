@@ -95,7 +95,7 @@ async function runCatalogSearch(offset=0) {
   }
 }
 function updateStatus(msg) {$('#save-status').textContent=msg;}
-function changePage(next) {page=next;gradeDraft=null;if(!['grades','simulation'].includes(next)){gradesCache=null;gradesPassword=null;if(exchangeMode==='statistics'){exchangeDraft=null;exchangeSource='';}}$('#sidebar').classList.remove('open');render();if(next==='settings'){loadFolder();refreshDumpStatus();}}
+function changePage(next) {page=next;gradeDraft=null;if(!['grades','simulation'].includes(next)){gradesCache=null;gradesPassword=null;simulationInputDrafts.clear();simulationCourseQuery='';simulationCourseFilter='all';gradeSavedSnapshot=null;if(exchangeMode==='statistics'){exchangeDraft=null;exchangeSource='';}}$('#sidebar').classList.remove('open');render();if(next==='settings'){loadFolder();refreshDumpStatus();}}
 function pill(text,type='') {return `<span class="pill ${type}">${escape(text)}</span>`;}
 function button(text,action,extra='',cls='smallbtn'){return `<button class="${cls}" data-action="${action}" ${extra}>${text}</button>`;}
 function pageHeader(title,desc,action='') {return `<div class="row between wrap" style="margin-bottom:22px"><div><h1 class="page-title">${title}</h1><p class="subtitle" style="margin-bottom:0">${desc}</p></div>${action}</div>`;}
@@ -134,6 +134,8 @@ function render() {
   document.querySelectorAll('[data-event-start]').forEach(e=>{const start=Number(e.dataset.eventStart),end=Number(e.dataset.eventEnd),columns=Number(e.dataset.eventColumns),lane=Number(e.dataset.eventLane);e.style.top=(start%60)/60*67+'px';e.style.height=Math.max(20,(end-start)/60*67-4)+'px';e.style.left=`calc(${lane*100/columns}% + 2px)`;e.style.width=`calc(${100/columns}% - 4px)`;});
   if(calendarSelection)$('#calendar-selection-dialog')?.showModal();
   refreshAssignmentChoices();
+  refreshSimulationCourseRows();
+  refreshScenarioSaveState();
   if(page==='schedule' && !meetingTimer)beginMeetingSync();
   else if(page!=='schedule' && meetingTimer){clearInterval(meetingTimer);meetingTimer=null;}
 }
@@ -425,13 +427,13 @@ function requirements() {
 }
 
 function grades() {
-  return `${pageHeader(page==='simulation'?tr('Studiensimulation','Study simulation'):tr('Private Noten','Private grades'),tr('Noten und Simulationen bleiben im passwortverschlüsselten Notenspeicher.','Grades and simulations remain in the password-encrypted grade vault.'))}<div class="card" style="max-width:820px"><div class="row between"><h2 class="section-title">🔒 ${tr('Geschützter Notenbereich','Protected grade vault')}</h2>${gradesCache?button(tr('Sperren','Lock'),'lock-grades'):''}</div>${gradesCache?(page==='simulation'?simulationPanel():renderGradeEditor()):`<p class="muted small">${tr('Passwort eingeben, um die verschlüsselten Noten zu öffnen oder erstmals anzulegen. Ohne Passwort ist keine Wiederherstellung möglich.','Enter a password to unlock or create the encrypted grades. Recovery is impossible without the password.')}</p><form id="grades-unlock-form"><div class="field"><label>${tr('Passwort','Password')}</label><input name="password" type="password" required minlength="8" autocomplete="off" placeholder="${tr('Mindestens 8 Zeichen','At least 8 characters')}"></div><div style="margin-top:13px"><button class="button" type="submit">${tr('Öffnen / erstellen','Unlock / create')}</button></div></form>`}</div>`;
+  return `${pageHeader(page==='simulation'?tr('Studiensimulation','Study simulation'):tr('Private Noten','Private grades'),tr('Noten und Simulationen bleiben im passwortverschlüsselten Notenspeicher.','Grades and simulations remain in the password-encrypted grade vault.'))}<div class="card ${page==='simulation'?'simulation-vault':''}"><div class="row between"><h2 class="section-title">🔒 ${tr('Geschützter Notenbereich','Protected grade vault')}</h2>${gradesCache?button(tr('Sperren','Lock'),'lock-grades'):''}</div>${gradesCache?(page==='simulation'?simulationPanel():renderGradeEditor()):`<p class="muted small">${tr('Passwort eingeben, um die verschlüsselten Noten zu öffnen oder erstmals anzulegen. Ohne Passwort ist keine Wiederherstellung möglich.','Enter a password to unlock or create the encrypted grades. Recovery is impossible without the password.')}</p><form id="grades-unlock-form"><div class="field"><label>${tr('Passwort','Password')}</label><input name="password" type="password" required minlength="8" autocomplete="off" placeholder="${tr('Mindestens 8 Zeichen','At least 8 characters')}"></div><div style="margin-top:13px"><button class="button" type="submit">${tr('Öffnen / erstellen','Unlock / create')}</button></div></form>`}</div>`;
 }
 function moduleGrade(entry){return MasterPlanRules.moduleGrade(entry);}
 function gradeCategory(entry){return entry.category==='specialisation'&&entry.subtype==='seminar'?'excluded':['core','specialisation','elective','thesis'].includes(entry.category)?entry.category:'excluded';}
 function calculateFinalGrade(entries){return MasterPlanRules.calculateFinalGrade(entries,guidelines||{});}
 
-let gradeDraft=null,activeSimulation=null;
+let gradeDraft=null,activeSimulation=null,gradeSavedSnapshot=null,gradeSaving=false;const simulationInputDrafts=new Map();let simulationCourseFilter='all',simulationCourseQuery='';
 const privatePages=['grades','simulation'];
 function privateNumber(v){return v===''?null:Number(v);}
 function gradeMetric(v){return v==null?'—':Number(v).toFixed(2);}
@@ -484,19 +486,19 @@ function renderGradeEditor(){
 }
 function simulationEntries(s){
   const plan=allPlans().find(p=>p.id===s.planId);if(!plan)return [];
-  return MasterPlanGrades.scenarioCourses(plan,state.history||[]).map(c=>MasterPlanGrades.simulationEntry(c,s.entries[MasterPlanGrades.key(c)],gradesCache.entries,s.useActual??(s.planId==='actual')));
+  return MasterPlanGrades.scenarioCourses(plan,state.history||[]).map(c=>MasterPlanGrades.scenarioEntry(c,s,gradesCache.entries));
 }
 function simulationPanel(){
   const sims=gradesCache.simulations;
   const selected=sims.find(s=>s.id===activeSimulation)||sims[0];activeSimulation=selected?.id||null;
   const entries=selected?simulationEntries(selected):[];
   return `<p class="note">${tr('Simulationen sind hypothetisch und ändern weder echte Noten noch Semesterzuweisungen. Beim Erstellen entscheidest du ausdrücklich, ob echte Ergebnisse übernommen werden.','Simulations are hypothetical and change neither actual grades nor course allocations. When creating a scenario, explicitly choose whether to inherit actual results.')}</p>
-    <form id="simulation-create-form" class="card"><label>${tr('Neues Notenszenario','New grade scenario')}<input name="name" required maxlength="150" placeholder="${tr('z. B. Optimistisch','e.g. Optimistic')}"></label><label>${tr('Echte Ergebnisse übernehmen?','Inherit actual results?')}<select name="useActual" required><option value="">${tr('Bitte auswählen','Choose explicitly')}</option><option value="yes">${tr('Ja','Yes')}</option><option value="no">${tr('Nein','No')}</option></select></label><button class="button" type="submit">${tr('Szenario erstellen','Create scenario')}</button></form>
-    <div class="actions">${button(tr('Verschlüsselt speichern','Save encrypted'),'grade-save','','button')}</div>
-    ${selected?`<div class="card spaced"><label>${tr('Notenszenario','Grade scenario')}<select id="simulation-select">${sims.map(s=>`<option value="${attrs(s.id)}" ${s.id===selected.id?'selected':''}>${escape(s.name)}</option>`).join('')}</select></label>
+    <details class="card" id="simulation-new" ${selected?'':'open'}><summary>${tr('+ Neues Szenario','+ New scenario')}</summary><form id="simulation-create-form"><label>${tr('Neues Notenszenario','New grade scenario')}<input name="name" required maxlength="150" placeholder="${tr('z. B. Optimistisch','e.g. Optimistic')}"></label><label>${tr('Ersatznote ohne Statistik (optional)','Fallback grade without statistics (optional)')}<input name="fallbackGrade" type="number" min="1" max="6" step="any" placeholder="4.5"></label><label>${tr('Echte Ergebnisse übernehmen?','Inherit actual results?')}<select name="useActual" required><option value="">${tr('Bitte auswählen','Choose explicitly')}</option><option value="yes">${tr('Ja','Yes')}</option><option value="no">${tr('Nein','No')}</option></select></label><button class="button" type="submit">${tr('Szenario erstellen','Create scenario')}</button></form></details>
+    <div class="actions scenario-save-toolbar">${button(tr('Szenarien speichern','Save scenarios'),'grade-save','','button')}<span data-scenario-save-state="${!scenarioHasUnsavedChanges()?'saved':'dirty'}">${!scenarioHasUnsavedChanges()?tr('Alle Szenarien gespeichert','All scenarios saved'):tr('Ungespeicherte Änderungen','Unsaved changes')}</span><span class="hint">${tr('Verschlüsselt; nach dem Neuladen wieder verfügbar.','Encrypted; available after reloading.')}</span></div>
+    ${selected?`<div class="card spaced" id="simulation-current-scenario"><p class="small muted">${sims.length} ${tr('Szenarien','scenarios')}</p><label>${tr('Notenszenario','Grade scenario')}<select id="simulation-select">${sims.map(s=>`<option value="${attrs(s.id)}" ${s.id===selected.id?'selected':''}>${escape(s.name)}</option>`).join('')}</select></label>
     <label>${tr('Semesterplanung auswählen','Choose study plan')}<select id="simulation-plan">${!allPlans().some(p=>p.id===selected.planId)?`<option selected value="">${tr('Plan wurde entfernt – bitte auswählen','Plan was removed – choose another')}</option>`:''}${allPlans().map(p=>`<option value="${attrs(p.id)}" ${p.id===selected.planId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label>${button(tr('Szenario duplizieren','Duplicate scenario'),'simulation-duplicate')}${button(tr('Szenario löschen','Delete scenario'),'simulation-delete')}</div>
-    ${gradeFinalCard(entries,true)}${statisticsAdjustment(selected)}
-    ${entries.map(e=>`<div class="card spaced"><h3>${escape(e.name)}</h3><p>${escape(trRole(MasterPlanRules.allocationRole({role:e.category,subtype:e.subtype})))}</p>${e.statistics?`<p>${tr('Statistik','Statistics')}: μ ${e.statistics.mean??e.statistics.grade??'—'} · σ ${e.statistics.stddev??'—'} · n ${e.statistics.sampleSize??'—'} · ${tr('Bestehensquote','Pass rate')}: ${e.statistics.passRate==null?'—':e.statistics.passRate+'%'} · ${tr('Prüfungssemester','Exam term')}: ${semName(e.statistics.semester)}</p><pre>${escape(JSON.stringify(e.statistics.source||{},null,2))}</pre>`:''}${e.statistics&&Object.hasOwn(e,'statisticalGrade')&&e.statisticalGrade==null?`<p class="note">${tr('Statistische Annahme unbekannt: Mittelwert oder benötigte Standardabweichung fehlt.','Statistical assumption unknown: missing mean or required standard deviation.')}</p>`:''}${e.statisticUnreachable?`<p class="note">${tr('Statistisches Ziel mit den echten Teilnoten nicht erreichbar; Annahme bleibt offen.','Statistical target cannot be reached with actual components; assumption remains pending.')}</p>`:''}${e.actualMatched?pill(tr('Echte Ergebnisse übernommen','Actual results inherited'),'green'):''}<p>${tr('Simulierte Modulnote','Simulated module grade')}: ${gradeMetric(MasterPlanGrades.forecast(e).projected)}</p>${button(tr('Teilnoten / Annahmen','Components / assumptions'),'simulation-edit',`data-key="${attrs(MasterPlanGrades.key({...e,id:e.courseId}))}"`)}</div>`).join('')||`<p>${tr('Dem gewählten Plan sind noch keine anrechenbaren Module zugewiesen.','The selected plan has no credit-bearing courses assigned yet.')}</p>`}${draftEditor()}`:''}${statisticsTools()}`;
+    ${gradeFinalCard(entries,true)}${simulationDefaults(selected,entries)}${statisticsAdjustment(selected)}
+    ${simulationCourseTable(selected,entries)}${draftEditor()}`:''}${statisticsTools()}`;
 }
 async function privateAction(action,element){
   if(action==='grade-add'||action==='grade-edit'){
@@ -512,6 +514,7 @@ async function privateAction(action,element){
   }else if(action==='simulation-duplicate'){
     const s=gradesCache.simulations.find(s=>s.id===activeSimulation),copy=structuredClone(s);copy.id=id();copy.name+=' '+tr('(Kopie)','(copy)');gradesCache.simulations.push(copy);activeSimulation=copy.id;gradeDraft=null;
   }else if(action==='simulation-delete'){gradesCache.simulations=gradesCache.simulations.filter(s=>s.id!==activeSimulation);activeSimulation=null;gradeDraft=null;}
+  if(gradeDraft?.kind==='simulation'&&['grade-part-add','grade-part-remove'].includes(action)){gradeDraft.dirty=true;gradeDraft.assumptionDirty=true;}
   render();$('#grade-editor')?.scrollIntoView({block:'start'});
 }
 function applyGradeDraft(){
@@ -522,9 +525,13 @@ function applyGradeDraft(){
     if(gradeDraft.index<0)gradesCache.entries.push(entry);else gradesCache.entries[gradeDraft.index]=entry;
   }else{
     const s=gradesCache.simulations.find(s=>s.id===gradeDraft.scenarioId);
-    // Persist assumptions only; actual marks are read afresh from the real vault on every render.
-    const entry=structuredClone(e);entry.parts=entry.parts.map(p=>({...p,value:null,actualLocked:undefined,structureLocked:undefined}));
-    delete entry.actualMatched;delete entry.bonusLocked;delete entry.formulaLocked;delete entry.statisticUnreachable;delete entry.statisticalGrade;s.entries[gradeDraft.key]=entry;
+    if(!gradeDraft.assumptionDirty){
+      if(gradeDraft.dirty){const c=MasterPlanGrades.scenarioCourses(getPlan(s.planId),state.history||[]).find(c=>MasterPlanGrades.key(c)===gradeDraft.key);s.entries[gradeDraft.key]={...(s.entries[gradeDraft.key]||MasterPlanGrades.baseEntry(c)),targetGrade:e.targetGrade};}
+    }else{
+      // Persist assumptions only; actual results are read afresh on every render.
+      const entry=structuredClone(e);entry.parts=entry.parts.map(p=>({...p,value:null,actualLocked:undefined,structureLocked:undefined}));
+      delete entry.actualMatched;delete entry.bonusLocked;delete entry.formulaLocked;delete entry.statisticUnreachable;delete entry.statisticalGrade;delete entry.assumedModuleGrade;delete entry.overrideGrade;delete entry.assumptionSource;entry.assumptionMode='manual';s.entries[gradeDraft.key]=entry;
+    }
   }
   gradeDraft=null;render();notify(tr('Im Notenspeicher vorgemerkt – bitte verschlüsselt speichern.','Updated in memory – please save encrypted.'));
 }
@@ -608,8 +615,10 @@ function formVal(form,name){return new FormData(form).get(name)?.toString().trim
 async function executeAction(action,element) {
   const p=getPlan(element.dataset.planId||state.activePlan), cid=element.dataset.id, course=p.courses.find(x=>x.id===cid);
   if(['copy-prompt','export-study-json','export-study-csv','export-preparation','exchange-apply'].includes(action))return exchangeAction(action,element);
+  if(action==='simulation-sigma-preset'){const s=gradesCache.simulations.find(s=>s.id===activeSimulation);$('#statistics-adjust-form [name="factor"]').value=element.dataset.factor;simulationInputDrafts.set(s.id+'|factor',element.dataset.factor);refreshScenarioSaveState();return;}
+  if(action==='simulation-reset-override'){const s=gradesCache.simulations.find(s=>s.id===activeSimulation),p=getPlan(s.planId),c=MasterPlanGrades.scenarioCourses(p,state.history||[]).find(c=>MasterPlanGrades.key(c)===element.dataset.key);if(c){MasterPlanGrades.resetOverride(s,c);simulationInputDrafts.delete(s.id+'|'+element.dataset.key);gradeDraft=null;render();}return;}
   if(action.startsWith('formula-')){
-    const e=gradeDraft.entry;if(e.formulaLocked)return;
+    const e=gradeDraft.entry;if(e.formulaLocked)return;if(gradeDraft.kind==='simulation'){gradeDraft.dirty=true;gradeDraft.assumptionDirty=true;}
     if(action==='formula-weighted'){e.formula='';e.bonusPlacement='after';}else{
       const names=action==='formula-two'?['M','F']:['M1','M2','F'],old=[...e.parts],used=new Set();
       const choose=(name,index)=>{let part=old.find(p=>p.variable===name)||(name==='M1'?old.find(p=>p.variable==='M'):name==='M'?old.find(p=>p.variable==='M1'):null);
@@ -685,9 +694,9 @@ async function executeAction(action,element) {
   if(action==='check-dump'){try{dumpStatus=await request('/api/vvz/dump/check','POST',{});render();refreshDumpStatus();notify(tr('VVZ-Abgleich gestartet.','VVZ sync started.'));}catch(e){notify(e.message);}return;}
   if(action==='move-folder'||action==='open-folder'){const folder=prompt(tr('Absoluter lokaler Ordnerpfad (kann im Cloud-Sync-Ordner liegen)','Absolute local folder path (may reside in cloud-synced folder)'),$('#folder-label')?.textContent||'');if(!folder)return;try{const x=await request('/api/storage','POST',{mode:action==='move-folder'?'move':'open',folder});state=x.state;notify(tr('Datenordner aktualisiert.','Data folder updated.'));render();loadFolder();}catch(e){notify(e.message);}return;}
   if(action==='export-data'){const b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(b),a=document.createElement('a');a.href=url;a.download='masterplan-export.json';a.click();URL.revokeObjectURL(url);return;}
-  if(action==='lock-grades'){gradeDraft=null;gradesCache=null;gradesPassword=null;return render();}
+  if(action==='lock-grades'){gradeDraft=null;gradesCache=null;gradesPassword=null;simulationInputDrafts.clear();simulationCourseQuery='';simulationCourseFilter='all';gradeSavedSnapshot=null;return render();}
   if(['grade-add','grade-edit','grade-delete','grade-draft-cancel','grade-part-add','grade-part-remove','simulation-edit','simulation-duplicate','simulation-delete'].includes(action))return privateAction(action,element);
-  if(action==='grade-save'){try{await saveGrades();notify(tr('Noten verschlüsselt gespeichert.','Grades encrypted and saved.'));}catch(e){notify(e.message);}return;}
+  if(action==='grade-save'){if(gradeSaving)return;gradeSaving=true;refreshScenarioSaveState();try{await saveGrades();notify(page==='simulation'?tr('Szenarien verschlüsselt gespeichert.','Scenarios encrypted and saved.'):tr('Noten verschlüsselt gespeichert.','Grades encrypted and saved.'));}catch(e){notify(e.message);}finally{gradeSaving=false;if(gradesCache)render();}return;}
   if(action==='set-de'||action==='set-en')return save(s=>s.language=action==='set-de'?'de':'en');
   if(action==='set-light'||action==='set-dark')return save(s=>s.theme=action==='set-light'?'light':'dark');
 }
@@ -709,9 +718,9 @@ async function loadFolder(){try{const x=await request('/api/storage');const e=$(
 function base64(bytes){let b='';for(const x of bytes)b+=String.fromCharCode(x);return btoa(b);}
 function unbase64(x){return Uint8Array.from(atob(x),x=>x.charCodeAt(0));}
 async function gradeKey(password,salt){const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
-async function unlockGrades(password){if(!globalThis.crypto?.subtle)throw Error(tr('Verschlüsselung benötigt einen sicheren Browserkontext.','Encryption requires a secure browser context.'));const payload=(await request('/api/grades')).encrypted;if(!payload){gradesCache={entries:[],simulations:[]};gradesPassword=password;return;}const salt=unbase64(payload.salt),iv=unbase64(payload.iv);const key=await gradeKey(password,salt);let plaintext;try{plaintext=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,unbase64(payload.ciphertext));}catch{throw Error(tr('Falsches Passwort oder beschädigte Daten.','Wrong password or corrupt data.'));}const decoded=JSON.parse(new TextDecoder().decode(plaintext));gradesCache=MasterPlanGrades.validateVault(decoded);gradesPassword=password;}
+async function unlockGrades(password){if(!globalThis.crypto?.subtle)throw Error(tr('Verschlüsselung benötigt einen sicheren Browserkontext.','Encryption requires a secure browser context.'));const payload=(await request('/api/grades')).encrypted;if(!payload){gradesCache={entries:[],simulations:[]};gradesPassword=password;activeSimulation=null;gradeSavedSnapshot=JSON.stringify(gradesCache);return;}const salt=unbase64(payload.salt),iv=unbase64(payload.iv);const key=await gradeKey(password,salt);let plaintext;try{plaintext=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,unbase64(payload.ciphertext));}catch{throw Error(tr('Falsches Passwort oder beschädigte Daten.','Wrong password or corrupt data.'));}const decoded=JSON.parse(new TextDecoder().decode(plaintext));gradesCache=MasterPlanGrades.validateVault(decoded);gradesPassword=password;activeSimulation=gradesCache.activeSimulation||null;gradeSavedSnapshot=JSON.stringify(gradesCache);}
 let gradeSaveQueue=Promise.resolve();
-function saveGrades(){if(!gradesCache||!gradesPassword)return Promise.reject(Error('Vault locked'));const snapshot=structuredClone(gradesCache),password=gradesPassword;const task=()=>persistGrades(snapshot,password);gradeSaveQueue=gradeSaveQueue.then(task,task);return gradeSaveQueue;}
+function saveGrades(){if(!gradesCache||!gradesPassword)return Promise.reject(Error('Vault locked'));if(gradeDraft?.kind==='simulation'&&gradeDraft.dirty)applyGradeDraft();commitSimulationDrafts();gradesCache.activeSimulation=activeSimulation;const cache=gradesCache,snapshot=structuredClone(gradesCache),password=gradesPassword;const task=async()=>{await persistGrades(snapshot,password);if(gradesCache===cache)gradeSavedSnapshot=JSON.stringify(snapshot);};gradeSaveQueue=gradeSaveQueue.then(task,task);return gradeSaveQueue;}
 async function persistGrades(snapshot,password){const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await gradeKey(password,salt);const plaintext=new TextEncoder().encode(JSON.stringify(snapshot));const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plaintext);await request('/api/grades','POST',{salt:base64(salt),iv:base64(iv),ciphertext:base64(new Uint8Array(ciphertext))});}
 
 addEventListener('click',async event=>{const nav=event.target.closest('[data-nav]');if(nav)return changePage(nav.dataset.nav);const action=event.target.closest('[data-action]');if(action){event.preventDefault();try{await executeAction(action.dataset.action,action);}catch(e){notify(e.message);}return;}});
@@ -761,18 +770,18 @@ function statisticsTools(){
     <label>${tr('Datensatz','Dataset')}<select name="dataset">${datasets.map(d=>`<option value="${attrs(d.id)}">${escape(d.name)}</option>`).join('')}</select></label>
     <label>${tr('Studienplan','Study plan')}<select name="plan">${allPlans().map(p=>`<option value="${attrs(p.id)}" ${p.id===state.activePlan?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label>
     <label>${tr('Faktor der Standardabweichung (−1 = eine schlechter, +1 = eine besser)','Standard deviation factor (−1 = one worse, +1 = one better)')}<input type="number" name="factor" min="-10" max="10" step="any" value="0"></label>
-    <label>${tr('Echte Ergebnisse übernehmen?','Inherit actual results?')}<select name="useActual" required><option value="">${tr('Bitte auswählen','Choose explicitly')}</option><option value="yes">${tr('Ja','Yes')}</option><option value="no">${tr('Nein','No')}</option></select></label>
+    <label>${tr('Ersatznote ohne Statistik (optional)','Fallback grade without statistics (optional)')}<input name="fallbackGrade" type="number" min="1" max="6" step="any" placeholder="4.5"></label><label>${tr('Echte Ergebnisse übernehmen?','Inherit actual results?')}<select name="useActual" required><option value="">${tr('Bitte auswählen','Choose explicitly')}</option><option value="yes">${tr('Ja','Yes')}</option><option value="no">${tr('Nein','No')}</option></select></label>
     <div id="statistics-scenario-conflicts">${datasets.length?statisticsConflictEditor(datasets[0],MasterPlanGrades.scenarioCourses(getPlan(state.activePlan),state.history||[]),'library'):''}</div><button type="submit" class="button">${tr('Statistikszenario erstellen','Create statistical scenario')}</button></form></div>`:''}`;
 }
-function createStatisticalScenario(data,planId,useActual,factor=0,name=null){
+function createStatisticalScenario(data,planId,useActual,factor=0,name=null,fallbackGrade=null){
   const p=allPlans().find(p=>p.id===planId);if(!p)throw Error('Plan missing');if(data.kind==='masterplan-statistics')requireStatisticsChoices(data,MasterPlanGrades.scenarioCourses(p,state.history||[]));
   const s={id:id(),name:name||data.name||tr('Importiertes Szenario','Imported scenario'),planId,useActual,entries:{},statisticsId:data.id||null,sigmaFactor:factor};
   for(const c of MasterPlanGrades.scenarioCourses(p,state.history||[])){
     const row=data.kind==='masterplan-statistics'?MasterPlanExchange.matchStatistics(c,data):MasterPlanExchange.match(c,data.courses);if(!row)continue;
     const grade=data.kind==='masterplan-grade-scenario'?row.grade:MasterPlanExchange.statisticalGrade(row,factor);
-    const e=MasterPlanGrades.baseEntry(c);e.statisticalGrade=grade;if(data.kind==='masterplan-statistics')e.statistics=structuredClone(row);else e.importedScenario=structuredClone(row);e.parts[0].estimate=grade??null;s.entries[MasterPlanGrades.key(c)]=e;
+    const e=MasterPlanGrades.baseEntry(c);e.statisticalGrade=grade;e.sigmaFactor=factor;if(data.kind==='masterplan-statistics')e.statistics=structuredClone(row);else e.importedScenario=structuredClone(row);e.parts[0].estimate=grade??null;s.entries[MasterPlanGrades.key(c)]=e;
   }
-  gradesCache.simulations.push(s);activeSimulation=s.id;gradeDraft=null;return s;
+  MasterPlanGrades.setFallback(s,fallbackGrade);gradesCache.simulations.push(s);activeSimulation=s.id;gradeDraft=null;return s;
 }
 async function exchangeAction(action,element){
   if(action==='copy-prompt'){const value=MasterPlanExchange.prompt(element.dataset.kind,element.dataset.lang);try{await navigator.clipboard.writeText(value);notify(tr('Prompt kopiert.','Prompt copied.'));}catch{notify(tr('Bitte den Prompt im Textfeld markieren und kopieren.','Select and copy the prompt text.'));}return;}
@@ -851,6 +860,7 @@ addEventListener('input',event=>{
   else if(field==='countsForFinal')gradeDraft.entry.countsForFinal=e.checked;
   else if((field==='bonus'&&gradeDraft.entry.bonusLocked)||(gradeDraft.entry.formulaLocked&&['formula','bonusPlacement','gradeCeiling'].includes(field)))return;
   else {gradeDraft.entry[field]=['bonus','targetGrade','gradeCeiling'].includes(field)?privateNumber(e.value):e.value;if(field==='bonus'&&gradeDraft.kind==='real')gradeDraft.entry.bonusKnown=true;}
+  if(gradeDraft.kind==='simulation'){gradeDraft.dirty=true;if(field!=='targetGrade')gradeDraft.assumptionDirty=true;refreshScenarioSaveState();}
   const preview=$('#grade-preview');if(preview)preview.innerHTML=forecastHtml(gradeDraft.entry);
 });
 addEventListener('change',event=>{
@@ -861,7 +871,7 @@ addEventListener('change',event=>{
 });
 addEventListener('submit',event=>{
   const form=event.target;
-  if(form.id==='simulation-create-form'){event.preventDefault();const name=formVal(form,'name'),choice=formVal(form,'useActual');if(!name||!gradesCache||!['yes','no'].includes(choice))return;const s={id:id(),name,planId:state.activePlan,useActual:choice==='yes',entries:{}};gradesCache.simulations.push(s);activeSimulation=s.id;gradeDraft=null;render();}
+  if(form.id==='simulation-create-form'){event.preventDefault();const name=formVal(form,'name'),choice=formVal(form,'useActual');if(!name||!gradesCache||!['yes','no'].includes(choice))return;const s={id:id(),name,planId:state.activePlan,useActual:choice==='yes',entries:{}};MasterPlanGrades.setFallback(s,privateNumber(formVal(form,'fallbackGrade')));gradesCache.simulations.push(s);activeSimulation=s.id;gradeDraft=null;render();}
   if(form.id==='grade-entry-form'){event.preventDefault();try{applyGradeDraft();}catch(e){notify(e.message);}}
 });
 
@@ -875,12 +885,12 @@ addEventListener('submit',async event=>{
     }catch(e){notify(e.message);}
   }
   if(form.id==='statistics-scenario-form'){
-    event.preventDefault();try{const dataset=gradesCache.statistics.find(d=>d.id===formVal(form,'dataset')),choice=formVal(form,'useActual');if(!['yes','no'].includes(choice))throw Error(tr('Bitte Notenübernahme wählen.','Choose actual-grade inheritance.'));createStatisticalScenario(dataset,formVal(form,'plan'),choice==='yes',Number(formVal(form,'factor')),formVal(form,'name'));render();}catch(e){notify(e.message);}
+    event.preventDefault();try{const dataset=gradesCache.statistics.find(d=>d.id===formVal(form,'dataset')),choice=formVal(form,'useActual');if(!['yes','no'].includes(choice))throw Error(tr('Bitte Notenübernahme wählen.','Choose actual-grade inheritance.'));createStatisticalScenario(dataset,formVal(form,'plan'),choice==='yes',Number(formVal(form,'factor')),formVal(form,'name'),privateNumber(formVal(form,'fallbackGrade')));render();}catch(e){notify(e.message);}
   }
   if(form.id==='statistics-adjust-form'){
     event.preventDefault();try{const s=gradesCache.simulations.find(s=>s.id===activeSimulation),factor=Number(formVal(form,'factor')),keys=new FormData(form).getAll('modules'),p=allPlans().find(p=>p.id===s.planId),courses=MasterPlanGrades.scenarioCourses(p,state.history||[]);
-      const updates=keys.map(key=>{const old=s.entries[key],c=courses.find(c=>MasterPlanGrades.key(c)===key);if(!old?.statistics||!c)throw Error('Module missing');const e=MasterPlanGrades.baseEntry(c);e.statistics=old.statistics;e.statisticalGrade=MasterPlanExchange.statisticalGrade(old.statistics,factor);e.parts[0].estimate=e.statisticalGrade;e.sigmaFactor=factor;return [key,e];});
-      if(!updates.length)throw Error(tr('Mindestens ein Modul auswählen.','Select at least one course.'));for(const [key,e] of updates)s.entries[key]=e;s.sigmaFactor=factor;gradeDraft=null;render();
+      if(!keys.length)throw Error(tr('Mindestens ein Statistikmodul auswählen.','Select at least one statistical course.'));
+      const result=MasterPlanGrades.updateSigma(s,courses,factor,keys);simulationInputDrafts.delete(s.id+'|factor');render();notify(`${result.updated} ${tr('Statistikannahmen aktualisiert; andere Noten bleiben erhalten.','statistical assumptions updated; other grades are preserved.')}`);
     }catch(e){notify(e.message);}
   }
 });
@@ -889,10 +899,12 @@ addEventListener('change',async event=>{
   if(e.id==='exchange-file'&&e.files?.[0]){try{if(e.files[0].size>2_000_000)throw Error('JSON too large');const value=await e.files[0].text();e.form.elements.namedItem('json').value=value;exchangeMode=e.form.dataset.kind;exchangeSource=value;exchangeDraft=null;$('#exchange-preview')?.remove();}catch(err){notify(err.message);}}
   if(e.form?.id==='exchange-form'&&e.name==='plan'){exchangeDraft=null;$('#exchange-preview')?.remove();}
 });
-function statisticsAdjustment(s){const entries=Object.entries(s.entries).filter(([,e])=>e.statistics);if(!entries.length)return '';
-  return `<form id="statistics-adjust-form" class="card spaced"><h3>${tr('Statistikannahmen anpassen','Adjust statistical assumptions')}</h3><label>${tr('Standardabweichungsfaktor','Standard deviation factor')}<input name="factor" type="number" min="-10" max="10" step="any" value="${attrs(s.sigmaFactor??0)}" required></label>
-    ${entries.map(([key,e])=>`<label class="check-row"><input type="checkbox" name="modules" value="${attrs(key)}" checked>${escape(e.name)}</label>`).join('')}
-    <p class="hint">${tr('Setzt Annahmen der ausgewählten Module zurück; echte Ergebnisse bleiben geschützt. Ohne Standardabweichung bleibt eine σ-Annahme unbekannt.','Resets assumptions for selected courses; actual results stay protected. A sigma adjustment stays unknown when deviation is unavailable.')}</p><button type="submit" class="button">${tr('Ausgewählte Annahmen neu berechnen','Recalculate selected assumptions')}</button></form>`;
+function statisticsAdjustment(s){
+  const entries=Object.entries(s.entries).filter(([,e])=>e.statistics);if(!entries.length)return '';
+  const eligible=entries.filter(([,e])=>!MasterPlanGrades.manualAssumption(e)&&e.statistics.mean!=null);
+  return `<form id="statistics-adjust-form" class="card spaced"><h3>${tr('Importierte Noten mit σ verändern','Adjust imported grades with σ')}</h3><label>${tr('Standardabweichungsfaktor','Standard deviation factor')}<input name="factor" type="number" min="-10" max="10" step="any" value="${attrs(simulationInputDrafts.get(s.id+'|factor')??s.sigmaFactor??0)}" ${eligible.length?'':'disabled'} required></label><div class="actions">${[-1,0,1].map(f=>button(f===0?tr('Durchschnitt','Average'):(f>0?'+1 σ':'−1 σ'),'simulation-sigma-preset',`data-factor="${f}" ${eligible.length?'':'disabled'}`)).join('')}</div>
+    <details class="sigma-course-options"><summary>${tr('Module auswählen','Choose courses')} · ${eligible.length} ${tr('ausgewählt','selected')}</summary>${entries.map(([key,e])=>{const locked=MasterPlanGrades.manualAssumption(e)||e.statistics.mean==null;return `<label class="check-row"><input type="checkbox" name="modules" value="${attrs(key)}" ${locked?'disabled':'checked'}>${escape(e.name)}${locked?' · '+tr('bleibt unverändert','preserved'):''}</label>`;}).join('')}</details>
+    <p class="hint">${tr('Lokale Überschreibungen und Module ohne passende Statistik bleiben unverändert. Fehlen Mittelwert oder benötigte Standardabweichung, wird die bisherige Annahme behalten.','Local overrides and courses without matching statistics are preserved. If the mean or required deviation is missing, the previous assumption is kept.')}</p><button type="submit" class="button" ${eligible.length?'':'disabled'}>${tr('σ auf Statistikmodule anwenden','Apply σ to statistical courses')}</button></form>`;
 }
 
 // Editing imported text invalidates its old preview, so Apply always uses reviewed JSON.
@@ -978,3 +990,65 @@ addEventListener('submit',async event=>{
 
 // Existing meeting blocks are not empty selection cells.
 addEventListener('click',event=>{if(event.target.closest('.event')?.closest('.daycell'))event.stopPropagation();},true);
+
+function assumptionSourceLabel(source){return ({actual:tr('Echte Note','Actual result'),manual:tr('Lokale Überschreibung','Local override'),statistics:tr('Importierte Statistik','Imported statistics'),import:tr('Importierte Annahme','Imported assumption'),fallback:tr('Globaler Ersatzwert','Global fallback'),unknown:tr('Annahme fehlt','Missing assumption')})[source]||'—';}
+function simulationDefaults(s,entries){
+  const count=source=>entries.filter(e=>e.assumptionSource===source).length;
+  return `<section class="card spaced" id="simulation-defaults"><h3>${tr('Ersatznote für Module ohne Statistik','Fallback grade for courses without statistics')}</h3><p>${tr('Gilt für Module ohne verwendbare importierte Note. Lokale Überschreibungen und echte Ergebnisse haben Vorrang.','Applies when there is no usable imported grade. Local overrides and actual results take priority.')}</p><form id="simulation-default-form"><label>${tr('Globale Ersatznote (leer = unbekannt)','Global fallback grade (blank = unknown)')}<input type="number" name="grade" min="1" max="6" step="any" value="${attrs(simulationInputDrafts.get(s.id+'|default')??s.fallbackGrade??'')}" placeholder="4.5"></label><button class="button" type="submit">${tr('Ersatznote anwenden','Apply fallback grade')}</button></form><p id="simulation-coverage" role="status">${count('statistics')+count('import')} ${tr('importiert','imported')} · ${count('fallback')} ${tr('globaler Ersatzwert','global fallback')} · ${count('manual')} ${tr('lokal überschrieben','local overrides')} · ${count('actual')} ${tr('echte Noten','actual results')} · ${entries.filter(e=>MasterPlanGrades.forecast(e,null).projected==null).length} ${tr('ohne vollständige Annahme','missing assumptions')}</p><p class="hint">${tr('Eine leere Annahme ist unbekannt, nicht Note 0. Änderungen anschließend verschlüsselt speichern.','An empty assumption is unknown, not grade 0. Save changes encrypted afterwards.')}</p></section>`;
+}
+function simulationCourseTable(s,entries){
+  return `<section class="card spaced" id="simulation-courses"><h3>${tr('Modulannahmen','Course assumptions')}</h3><div class="field-row"><label>${tr('Module suchen','Search courses')}<input id="simulation-course-search" value="${attrs(simulationCourseQuery)}" type="search"></label><label>${tr('Annahmen anzeigen','Show assumptions')}<select id="simulation-course-filter">${[['all',tr('Alle Module','All courses')],['unknown',tr('Fehlende Annahmen','Missing assumptions')],['manual',tr('Lokale Überschreibungen','Local overrides')],['fallback',tr('Globaler Ersatzwert','Global fallback')],['statistics',tr('Importierte Werte','Imported values')],['actual',tr('Echte Ergebnisse','Actual results')]].map(([key,label])=>`<option value="${key}" ${key===simulationCourseFilter?'selected':''}>${label}</option>`).join('')}</select></label></div><p id="simulation-filter-status" role="status"></p><p class="hint">${tr('Eine lokale Modulnote eintragen und übernehmen. „Standard verwenden“ wechselt zurück zu Statistik oder Ersatznote. Für Teilnoten die Details öffnen.','Enter and apply a local module grade. Use default returns to statistics or the fallback grade. Open details for assessment components.')}</p><div class="table-wrap"><table><thead><tr><th>${tr('Modul / Quelle','Course / source')}</th><th>${tr('Simulierte Note','Simulated grade')}</th><th>${tr('Lokale Modulnote','Local module grade')}</th><th>${tr('Details','Details')}</th></tr></thead><tbody>${entries.map(e=>{
+    const key=MasterPlanGrades.key({...e,id:e.courseId}),f=MasterPlanGrades.forecast(e,null),manual=MasterPlanGrades.manualAssumption(s.entries[key]),localValue=manual?(e.overrideGrade??f.projected??''):'',actual=e.assumptionSource==='actual';
+    return `<tr data-simulation-row="${attrs(key)}" data-source="${attrs(e.assumptionSource)}" data-missing-assumption="${f.projected==null}" data-course-query="${attrs((e.name+' '+(e.number||'')).toLowerCase())}"><td><strong>${escape(e.name)}</strong><div class="tiny muted">${escape(e.number||'')} · ${semName(e.semester)} · ${escape(trRole(MasterPlanRules.allocationRole({role:e.category,subtype:e.subtype})))}</div><span class="pill ${e.assumptionSource==='unknown'?'orange':e.assumptionSource==='actual'?'green':''}" data-assumption-source>${assumptionSourceLabel(e.assumptionSource)}</span>${e.actualMatched?pill(tr('Echte Ergebnisse übernommen','Actual results inherited'),'green'):''}${e.statistics?`<details class="simulation-statistics"><summary>${tr('Statistik und Quelle','Statistics and source')} · μ ${e.statistics.mean??'—'} · σ ${e.statistics.stddev??'—'}</summary><p>n ${e.statistics.sampleSize??'—'} · ${tr('Bestehensquote','Pass rate')}: ${e.statistics.passRate==null?'—':e.statistics.passRate+'%'} · ${semName(e.statistics.semester)} · ${tr('Angewendeter σ-Faktor','Applied σ factor')}: ${e.sigmaFactor??s.sigmaFactor??0}</p><pre>${escape(JSON.stringify(e.statistics.source||{},null,2))}</pre></details>`:''}${e.assumptionSource==='unknown'&&e.statistics?`<p class="note">${tr('Statistische Annahme unbekannt: Mittelwert oder benötigte Standardabweichung fehlt.','Statistical assumption unknown: missing mean or required standard deviation.')}</p>`:''}${e.statisticUnreachable?`<p class="note">${tr('Annahmenziel mit echten Teilnoten nicht erreichbar; offene Ergebnisse bleiben unbekannt.','Assumption target cannot be reached with actual components; pending results remain unknown.')}</p>`:''}</td><td><strong class="simulation-course-grade" data-simulation-grade>${gradeMetric(f.projected)}</strong></td><td><form class="simulation-quick-form" data-key="${attrs(key)}" data-scenario="${attrs(s.id)}"><input aria-label="${attrs(tr('Lokale Modulnote für ','Local module grade for ')+e.name)}" name="grade" type="number" min="1" max="6" step="any" value="${attrs(simulationInputDrafts.get(s.id+'|'+key)??localValue)}" placeholder="${gradeMetric(f.projected)}" ${actual?'disabled':''}><button type="submit" class="smallbtn" ${actual?'disabled':''}>${tr('Übernehmen','Apply')}</button></form>${manual&&!actual?button(tr('Standard verwenden','Use default'),'simulation-reset-override',`data-key="${attrs(key)}"`):''}</td><td>${button(tr('Teilnoten / Details','Components / details'),'simulation-edit',`data-key="${attrs(key)}"`)}</td></tr>`;
+  }).join('')}</tbody></table></div></section>`;
+}
+function refreshSimulationCourseRows(){
+  const rows=[...document.querySelectorAll('[data-simulation-row]')];if(!rows.length)return;
+  let visible=0;for(const row of rows){const matchesSource=simulationCourseFilter==='unknown'?row.dataset.missingAssumption==='true':simulationCourseFilter==='all'||row.dataset.source===simulationCourseFilter||simulationCourseFilter==='statistics'&&row.dataset.source==='import';row.hidden=!matchesSource||!row.dataset.courseQuery.includes(simulationCourseQuery.trim().toLowerCase());if(!row.hidden)visible++;}
+  $('#simulation-filter-status').textContent=`${visible} / ${rows.length} ${tr('Module angezeigt','courses shown')}`;
+}
+addEventListener('input',event=>{
+  const e=event.target,s=gradesCache?.simulations.find(s=>s.id===activeSimulation);if(!s)return;
+  if(e.form?.classList.contains('simulation-quick-form'))simulationInputDrafts.set(s.id+'|'+e.form.dataset.key,e.value);
+  if(e.form?.id==='simulation-default-form')simulationInputDrafts.set(s.id+'|default',e.value);
+  if(e.form?.id==='statistics-adjust-form'&&e.name==='factor')simulationInputDrafts.set(s.id+'|factor',e.value);
+  if(e.id==='simulation-course-search'){simulationCourseQuery=e.value;refreshSimulationCourseRows();}if(simulationInputDrafts.size){const indicator=$('[data-scenario-save-state]');if(indicator){indicator.dataset.scenarioSaveState='dirty';indicator.textContent=tr('Ungespeicherte Änderungen','Unsaved changes');}}
+});
+addEventListener('change',event=>{if(event.target.id==='simulation-course-filter'){simulationCourseFilter=event.target.value;refreshSimulationCourseRows();}});
+addEventListener('submit',event=>{
+  const form=event.target;if(form.id!=='simulation-default-form'&&!form.classList.contains('simulation-quick-form'))return;event.preventDefault();
+  try{
+    const s=gradesCache.simulations.find(s=>s.id===activeSimulation);if(!s)return;
+    if(form.id==='simulation-default-form'){MasterPlanGrades.setFallback(s,privateNumber(formVal(form,'grade')));simulationInputDrafts.delete(s.id+'|default');}
+    else{
+      const p=getPlan(s.planId),c=MasterPlanGrades.scenarioCourses(p,state.history||[]).find(c=>MasterPlanGrades.key(c)===form.dataset.key);if(!c||form.dataset.scenario!==s.id)throw Error(tr('Modul nicht verfügbar.','Course unavailable.'));
+      const entry=MasterPlanGrades.scenarioEntry(c,s,gradesCache.entries);if(entry.assumptionSource==='actual')throw Error(tr('Echte Note ist geschützt.','Actual result is protected.'));
+      const grade=privateNumber(formVal(form,'grade'));if(grade==null)MasterPlanGrades.resetOverride(s,c);else MasterPlanGrades.setOverride(s,c,grade);simulationInputDrafts.delete(s.id+'|'+form.dataset.key);
+    }
+    render();notify(tr('Annahmen aktualisiert. Bitte verschlüsselt speichern.','Assumptions updated. Please save encrypted.'));
+  }catch(e){notify(e.message);}
+});
+
+// Save includes valid edits still sitting in the compact assumption controls.
+function commitSimulationDrafts(){
+  if(!simulationInputDrafts.size)return;
+  const next=structuredClone(gradesCache);
+  for(const s of next.simulations){
+    const prefix=s.id+'|',drafts=[...simulationInputDrafts].filter(([key])=>key.startsWith(prefix));if(!drafts.length)continue;
+    const p=allPlans().find(p=>p.id===s.planId);if(!p)throw Error(tr('Zuerst einen gültigen Studienplan auswählen.','Choose a valid study plan first.'));
+    const courses=MasterPlanGrades.scenarioCourses(p,state.history||[]);
+    for(const [fullKey,value] of drafts){const key=fullKey.slice(prefix.length);if(key==='factor')continue;
+      if(key==='default'){MasterPlanGrades.setFallback(s,privateNumber(value));continue;}
+      const c=courses.find(c=>MasterPlanGrades.key(c)===key);if(!c)throw Error(tr('Modul der offenen Änderung nicht mehr verfügbar.','A course with a pending edit is no longer available.'));
+      if(MasterPlanGrades.scenarioEntry(c,s,next.entries).assumptionSource==='actual')continue;
+      if(value==='')MasterPlanGrades.resetOverride(s,c);else MasterPlanGrades.setOverride(s,c,privateNumber(value));
+    }
+    if(simulationInputDrafts.has(prefix+'factor')){
+      const form=s.id===activeSimulation?$('#statistics-adjust-form'):null,keys=form?new FormData(form).getAll('modules'):Object.keys(s.entries);
+      MasterPlanGrades.updateSigma(s,courses,privateNumber(simulationInputDrafts.get(prefix+'factor')),keys);
+    }
+  }
+  gradesCache=next;simulationInputDrafts.clear();
+}
+function scenarioHasUnsavedChanges(){return !!gradesCache&&(JSON.stringify(gradesCache)!==gradeSavedSnapshot||simulationInputDrafts.size>0||gradeDraft?.kind==='simulation'&&gradeDraft.dirty);}
+function refreshScenarioSaveState(){const indicator=$('[data-scenario-save-state]');if(!indicator)return;const dirty=scenarioHasUnsavedChanges();indicator.dataset.scenarioSaveState=gradeSaving?'saving':dirty?'dirty':'saved';indicator.textContent=gradeSaving?tr('Wird gespeichert…','Saving…'):dirty?tr('Ungespeicherte Änderungen','Unsaved changes'):tr('Alle Szenarien gespeichert','All scenarios saved');const save=$('.scenario-save-toolbar [data-action="grade-save"]');if(save)save.disabled=gradeSaving;}

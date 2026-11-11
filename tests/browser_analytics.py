@@ -75,7 +75,7 @@ def main():
                 statistical_scenario('One sigma below average (demo)',-1,'no');assert page.locator('#private-final .metric').inner_text()=='4.50'
                 page.locator('#private-final').scroll_into_view_if_needed();screenshot('22-statistical-master-grade.jpg','#private-final')
                 # Selected adjustment does not change unselected assumptions.
-                adjust=page.locator('#statistics-adjust-form');[box.uncheck() for box in adjust.locator('[name="modules"]').all()];adjust.locator('[name="modules"]').first.check();adjust.locator('[name="factor"]').fill('0');adjust.locator('button').click()
+                adjust=page.locator('#statistics-adjust-form');adjust.locator('summary').click();[box.uncheck() for box in adjust.locator('[name="modules"]').all()];adjust.locator('[name="modules"]').first.check();adjust.locator('[name="factor"]').fill('0');adjust.locator('button[type="submit"]').click()
                 assert page.locator('#private-final .metric').inner_text()=='4.57'
                 statistical_scenario('Keep actual results (demo)',-1,'yes');assert page.locator('#private-final .metric').inner_text()=='4.64'
                 key='number:'+first['number'];page.locator(f'[data-action="simulation-edit"][data-key="{key}"]').click()

@@ -130,3 +130,59 @@ picker and save. Selection snaps to 15 minutes, supports reverse dragging and ca
 form. Repeating the flow adds more weekly meetings. Escape/Cancel discards the selection. Only
 unlocked modules assigned to the current plan/semester can receive meetings. Keyboard activation
 of a time cell opens the same picker. The older manual and module-first flows remain available.
+
+## Update: Ersatznoten, lokale Überschreibungen und Szenarien speichern
+
+In **Studiensimulation** kann eine **globale Ersatznote** von 1 bis 6 für Module ohne verwendbare
+importierte Note gesetzt werden. Ein leeres Feld bedeutet unbekannt, niemals Note 0. Die Ersatznote
+kann bereits beim Erstellen oder später beim ausgewählten Szenario eingestellt werden.
+
+Die kompakte Modultabelle zeigt Note, Semester, Kategorie und Quelle. Eine **lokale Modulnote**
+eintragen und übernehmen, um ein einzelnes Modul zu überschreiben. **Standard verwenden** entfernt
+die lokale Annahme und verwendet wieder Statistik oder Ersatznote. Suche und Quellenfilter helfen,
+fehlende Annahmen und Überschreibungen zu finden. Statistikquellen sind aufklappbar; Teilnoten und
+eigene Formeln bleiben über die Details verfügbar. Das bloße Öffnen der Details oder Ändern einer
+Zielnote friert einen Statistikwert nicht als lokale Annahme ein.
+
+Vorrang: echte Ergebnisse (wenn im Szenario übernommen), lokale Annahmen, verwendbare importierte
+Noten, globale Ersatznote, unbekannt. Bei echten Teilnoten dient eine lokale/globale Modulnote als
+Ziel für die offenen Leistungen; bekannte Teilnoten, Bonus und Bewertungsformel bleiben geschützt.
+Ein unerreichbares Ziel wird markiert. Die regulären Regeln zur Master-Gesamtnote gelten weiterhin.
+
+**σ ändern** betrifft nur ausgewählte Statistikmodule. Lokale Überschreibungen, Module ohne Import
+und manuell ergänzte Noten bei lückenhaften Statistiken werden nicht zurückgesetzt. Ist die neue
+σ-Annahme nicht berechenbar, bleibt eine vorhandene Annahme bestehen. Fehlt schon bei der Erstellung
+eine verwendbare Statistiknote, gilt die Ersatznote oder unbekannt. Die σ-Auswahl zeigt geschützte
+Module an; je Modul bleibt der tatsächlich angewendete Faktor nachvollziehbar.
+
+**Szenarien speichern** sichert alle benannten Szenarien samt Ersatznoten, Überschreibungen,
+Statistikdaten und zuletzt gewähltem Szenario in `grades.enc`. Die Leiste zeigt ungespeicherte
+Änderungen, Speichervorgang und gespeicherten Stand. Gültige noch offene Inline-, Ersatznoten- und
+σ-Eingaben sowie bearbeitete Simulations-Teilnoten werden beim Speichern übernommen. Ungültige
+Eingaben blockieren den Speichervorgang mit einer Meldung. Nach dem Neuladen den Notenspeicher mit
+dem bisherigen Passwort öffnen; die Szenarien und die gespeicherte Auswahl sind wieder da.
+
+## Update: fallback grades, local overrides and saving scenarios
+
+Set a **global fallback grade** (1–6) for courses without a usable imported grade, either during
+scenario creation or later. Blank means unknown, never grade zero. The compact course table shows
+where each grade comes from. Apply a local module grade to override one course; **Use default**
+returns it to imported statistics or the global fallback. Search and source filters help locate
+missing assumptions and overrides. Expand statistics for provenance, or open details for components
+and custom formulas. Viewing details or changing a target grade alone does not create an override.
+
+Actual results take priority when inherited, followed by local overrides, usable imported grades,
+the global fallback and unknown. For partially graded modules, an assumed module target is solved
+against the remaining components while preserving actual grades, bonus and formula. Unreachable
+targets remain marked. The normal final-degree grade/category checks still apply.
+
+Changing **sigma** updates selected statistical courses while preserving local grades and unmatched
+courses. Imported rows missing a mean/deviation no longer erase manual assumptions. If a new sigma
+assumption cannot be calculated, the existing assumption remains. A course starting without a usable
+statistical grade uses the fallback or stays unknown. Per-course metadata shows the applied factor.
+
+**Save scenarios** persists all named scenarios, fallbacks, overrides, statistics and the selected
+scenario in the encrypted vault. The toolbar shows unsaved, saving and saved states. It includes
+valid pending inline/default/sigma edits and modified simulation components; invalid edits show an
+error instead of being silently saved. Reload, unlock with the same password, and the saved scenarios
+and selection are restored. Scenario data is never added to the public study-plan JSON.

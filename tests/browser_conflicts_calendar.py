@@ -44,7 +44,7 @@ def main():
                 page.locator('[data-action="exchange-apply"]').click();page.wait_for_selector('#statistics-scenario-form')
                 form=page.locator('#statistics-scenario-form');form.locator('[name="name"]').fill('Chosen source records');form.locator('[name="useActual"]').select_option('no');form.locator('button').click();page.wait_for_selector('#simulation-select')
                 for c,grade,rate,source in [(first,'4.60','70%','Alternative source.pdf'),(second,'5.20','95%','Recent source.pdf')]:
-                    card=page.locator('.card').filter(has=page.locator(f'[data-action="simulation-edit"][data-key="number:{c["number"]}"]')).last
+                    card=page.locator(f'[data-simulation-row="number:{c["number"]}"]');card.locator('summary').click()
                     text=card.inner_text();assert grade in text and rate in text and source in text,text
                 # Another target semester asks for its own ambiguous historical choice.
                 form.locator('[name="plan"]').select_option('physics');new_key='number:'+second['number']+'@2027W'
