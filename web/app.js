@@ -95,14 +95,14 @@ async function runCatalogSearch(offset=0) {
   }
 }
 function updateStatus(msg) {$('#save-status').textContent=msg;}
-function changePage(next) {page=next;gradeDraft=null;if(!['grades','simulation'].includes(next)){gradesCache=null;gradesPassword=null;}$('#sidebar').classList.remove('open');render();if(next==='settings'){loadFolder();refreshDumpStatus();}}
+function changePage(next) {page=next;gradeDraft=null;if(!['grades','simulation'].includes(next)){gradesCache=null;gradesPassword=null;if(exchangeMode==='statistics'){exchangeDraft=null;exchangeSource='';}}$('#sidebar').classList.remove('open');render();if(next==='settings'){loadFolder();refreshDumpStatus();}}
 function pill(text,type='') {return `<span class="pill ${type}">${escape(text)}</span>`;}
 function button(text,action,extra='',cls='smallbtn'){return `<button class="${cls}" data-action="${action}" ${extra}>${text}</button>`;}
 function pageHeader(title,desc,action='') {return `<div class="row between wrap" style="margin-bottom:22px"><div><h1 class="page-title">${title}</h1><p class="subtitle" style="margin-bottom:0">${desc}</p></div>${action}</div>`;}
 let detailCourse=null,detailsBack='catalog';const unitDetailsCache=new Map();
 function moduleTitle(c){
   const off=c.offering||{},unit=c.unitId||off.unit_id||null,term=c.sourceSemester||off.source_semester||c.semester||'';
-  return button(escape(c.title||c.title_english||c.number||tr('Modul','Course')),'course-details',`data-unit-id="${attrs(unit||'')}" data-title="${attrs(c.title||c.title_english||c.number||'')}" data-number="${attrs(c.number||'')}" data-source-semester="${attrs(term)}"`,'course-title');
+  return button(escape(c.title||c.title_english||c.number||tr('Modul','Course')),'course-details',`data-unit-id="${attrs(unit||'')}" data-title="${attrs(c.title||c.title_english||c.number||'')}" data-number="${attrs(c.number||'')}" data-source-semester="${attrs(term)}" data-target-semester="${attrs(c.semester||'')}"`,'course-title');
 }
 function courseDetails(){
   const entry=unitDetailsCache.get(String(detailCourse?.unitId)),unit=entry?.unit;
@@ -110,10 +110,11 @@ function courseDetails(){
   return `${pageHeader(tr('Moduldetails','Course details'),escape(detailCourse?.title||''),button(tr('Zurück','Back'),'close-details'))}
     <div class="card"><h2>${escape(detailCourse?.title)}</h2><p>${escape(detailCourse?.number||'')} · ${semName(detailCourse?.sourceSemester)}</p>${courseLinks(detailCourse||{})}
     ${!detailCourse?.unitId?`<p>${tr('Keine VVZ-Kennung vorhanden. Details bitte im verlinkten Vorlesungsverzeichnis prüfen.','No VVZ unit ID is available. Please check the linked official catalogue.')}</p>`:entry?.error?`<p role="status">${escape(entry.error)}</p>${button(tr('Erneut laden','Retry'),'retry-details')}`:!unit?`<p role="status">${tr('Kursinformationen werden geladen…','Loading course information…')}</p>`:
-      [['abstract',tr('Kursbeschreibung','Course description')],['objective',tr('Lernziele','Learning objectives')],['content',tr('Inhalte','Contents')],['literature',tr('Literatur','Literature')]].map(([key,label])=>`<section><h3>${label}</h3><p class="course-detail-text">${escape(field(key)||tr('Keine Angaben in den Kursdaten vorhanden.','No information supplied in the course data.'))}</p></section>`).join('')}</div>`;
+      [['abstract',tr('Kursbeschreibung','Course description')],['objective',tr('Lernziele','Learning objectives')],['content',tr('Inhalte','Contents')],['literature',tr('Literatur','Literature')]].map(([key,label])=>`<section><h3>${label}</h3><p class="course-detail-text">${escape(field(key)||tr('Keine Angaben in den Kursdaten vorhanden.','No information supplied in the course data.'))}</p></section>`).join('')}</div>${insightPanel(detailCourse||{})}`;
 }
 async function loadCourseDetails(){const course=detailCourse;if(!course?.unitId)return;const key=String(course.unitId);if(!unitDetailsCache.has(key)){try{const result=await request('/api/vvz/unit/'+encodeURIComponent(key));if(!result.unit)throw Error(tr('Keine Kursdaten vorhanden.','No course data available.'));unitDetailsCache.set(key,{unit:result.unit});}catch(e){unitDetailsCache.set(key,{error:e.message});}}if(page==='course-details'&&detailCourse===course)render();}
 function render() {
+  const previousNotes=$('#module-notes-form'),notesDraft=previousNotes?{key:previousNotes.dataset.key,value:previousNotes.elements.notes.value}:null;
   const previousEventForm=$('#event-form'),eventDraft=previousEventForm?{plan:previousEventForm.dataset.planId,term:previousEventForm.dataset.term,values:Object.fromEntries(new FormData(previousEventForm))}:null;
   document.documentElement.dataset.theme=state.theme;
   document.documentElement.lang=state.language;
@@ -124,7 +125,9 @@ function render() {
   const renderers = {dashboard:dashboard,schedule:schedule,semesters:semesters,plans:plans,catalog:catalog,requirements:requirements,grades:grades,simulation:grades,settings:settings,'course-details':courseDetails};
   $('#app').innerHTML=(renderers[page]||dashboard)();
 
+  const nextNotes=$('#module-notes-form');if(notesDraft&&nextNotes?.dataset.key===notesDraft.key)nextNotes.elements.notes.value=notesDraft.value;
   const nextEventForm=$('#event-form');if(eventDraft&&nextEventForm&&eventDraft.plan===nextEventForm.dataset.planId&&eventDraft.term===nextEventForm.dataset.term&&[...nextEventForm.elements.namedItem('course').options].some(o=>o.value===eventDraft.values.course)){for(const [key,value] of Object.entries(eventDraft.values)){const field=nextEventForm.elements.namedItem(key);if(field)field.value=value;}const selected=plan().courses.find(c=>c.id===eventDraft.values.course);if(selected)$('#manual-vvz-link').innerHTML=courseLinks(selected);}
+  document.querySelectorAll('[data-event-start]').forEach(e=>{const start=Number(e.dataset.eventStart),end=Number(e.dataset.eventEnd),columns=Number(e.dataset.eventColumns),lane=Number(e.dataset.eventLane);e.style.top=(start%60)/60*67+'px';e.style.height=Math.max(20,(end-start)/60*67-4)+'px';e.style.left=`calc(${lane*100/columns}% + 2px)`;e.style.width=`calc(${100/columns}% - 4px)`;});
   refreshAssignmentChoices();
   if(page==='schedule' && !meetingTimer)beginMeetingSync();
   else if(page!=='schedule' && meetingTimer){clearInterval(meetingTimer);meetingTimer=null;}
@@ -258,7 +261,7 @@ function plans() {
       <div class="tabs"><button class="tab ${comparisonView==='plans'?'active':''}" data-action="compare-view" data-view="plans">${tr('Alle Anforderungen','All requirements')}</button><button class="tab ${comparisonView==='semesters'?'active':''}" data-action="compare-view" data-view="semesters">${tr('Semester vs. Semester','Semester vs. semester')}</button></div>
       ${comparisonView==='semesters'?semesterComparison():`<div class="table-wrap"><table><thead><tr><th>${tr('Merkmal','Measure')}</th>${options.map(x=>`<th>${escape(x.name)}</th>`).join('')}</tr></thead><tbody>
         ${[[tr('ECTS geplant','Planned ECTS'),x=>formatNum(planSummary(x).ects)],[tr('Offene Bedingungen','Open rules'),x=>planSummary(x).open],[tr('Zusatzkurse','Extra courses'),x=>planSummary(x).extras],[tr('Module','Courses'),x=>x.courses.length]].map(([label,fn])=>`<tr><td>${escape(label)}</td>${options.map(x=>`<td>${escape(fn(x))}</td>`).join('')}</tr>`).join('')}
-      </tbody></table></div><div class="line"></div>${options.map(x=>`<details class="scenario-requirements"><summary><strong>${escape(x.name)}</strong> · ${tr('Required Study Achievements','Required study achievements')}</summary>${briefRequirements(x)}</details>`).join('')}`}</div>`;
+      </tbody></table></div><div class="line"></div>${options.map(x=>`<details class="scenario-requirements"><summary><strong>${escape(x.name)}</strong> · ${tr('Required Study Achievements','Required study achievements')}</summary>${briefRequirements(x)}</details>`).join('')}`}</div>${studyTools()}`;
 }
 
 let allocationEdit=null;
@@ -332,14 +335,20 @@ function schedule() {
   const p=plan();let semester=p.semesters.includes(schedule.current)?schedule.current:p.semesters[0];schedule.current=semester;
   const days=state.language==='de'?['Mo','Di','Mi','Do','Fr','Sa','So']:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const courses=allCourses(p).filter(c=>c.semester===semester);
-  const events=courses.flatMap(c=>(c.events||[]).map(e=>({...e,c}))).filter(x=>x.day>=0&&x.day<=6&&x.start&&x.end);
+  const events=courses.flatMap(c=>(c.events||[]).map((e,eventIndex)=>({...e,day:Number(e.day),c,eventIndex}))).filter(x=>x.day>=0&&x.day<=6&&x.start&&x.end);
   const timeToM=x=>{const [h,m]=String(x).split(':').map(Number);return h*60+m;};
   const conflicts=new Set();for(let i=0;i<events.length;i++)for(let j=i+1;j<events.length;j++){
     const a=events[i],b=events[j];if(a.day===b.day&&timeToM(a.start)<timeToM(b.end)&&timeToM(b.start)<timeToM(a.end)){conflicts.add(a.c.id+'-'+a.day);conflicts.add(b.c.id+'-'+b.day);}
   }
-  const cells=[];for(let h=8;h<=19;h++){cells.push(`<div class="hour">${String(h).padStart(2,'0')}:00</div>`);
+  for(let day=0;day<7;day++){
+    const daily=events.filter(e=>e.day===day).sort((a,b)=>timeToM(a.start)-timeToM(b.start));let group=[],ends=[],groupEnd=-1;
+    const finish=()=>{for(const e of group)e.columns=ends.length;};
+    for(const e of daily){const start=timeToM(e.start),end=timeToM(e.end);if(start>=groupEnd){finish();group=[];ends=[];groupEnd=-1;}let lane=ends.findIndex(t=>t<=start);if(lane<0)lane=ends.length;ends[lane]=end;e.lane=lane;group.push(e);groupEnd=Math.max(groupEnd,end);}finish();
+  }
+  const firstHour=Math.min(8,...events.map(e=>Math.floor(timeToM(e.start)/60))),lastHour=Math.max(20,...events.map(e=>Math.ceil(timeToM(e.end)/60)));
+  const cells=[];for(let h=firstHour;h<lastHour;h++){cells.push(`<div class="hour">${String(h).padStart(2,'0')}:00</div>`);
     for(let d=0;d<7;d++){const matching=events.filter(e=>e.day===d&&timeToM(e.start)<(h+1)*60&&timeToM(e.end)>h*60&&timeToM(e.start)>=h*60);
-      cells.push(`<div class="daycell" role="button" tabindex="0" data-action="place-slot" data-day="${d}" data-start="${String(h).padStart(2,'0')}:00">${matching.map(e=>`<div class="event ${e.c.role==='extra'?'extra':''} ${conflicts.has(e.c.id+'-'+e.day)?'conflict':''}" title="${attrs(e.c.title)}"><strong>${escape(e.c.title)}</strong><div class="tiny">${escape(e.start)}–${escape(e.end)}</div><div class="tiny">${escape(e.building||'')} ${escape(e.floor||'')} ${escape(e.room||'')}</div></div>`).join('')}</div>`);}}
+      cells.push(`<div class="daycell" role="button" tabindex="0" data-action="place-slot" data-day="${d}" data-start="${String(h).padStart(2,'0')}:00">${matching.map(e=>`<div data-event-start="${timeToM(e.start)}" data-event-end="${timeToM(e.end)}" data-event-lane="${e.lane||0}" data-event-columns="${e.columns||1}" class="event ${e.c.role==='extra'?'extra':''} ${conflicts.has(e.c.id+'-'+e.day)?'conflict':''}" title="${attrs(e.c.title)}"><strong>${escape(e.c.title)}</strong><div class="tiny">${escape(e.start)}–${escape(e.end)}</div><div class="tiny">${escape(e.building||'')} ${escape(e.floor||'')} ${escape(e.room||'')}</div></div>`).join('')}</div>`);}}
   return `${pageHeader(tr('Stundenplan','Timetable'),tr('Wähle erst den Kurs aus deinem belegten Semester; kein manuelles Suchen nötig.','Choose a course already assigned to this semester; no manual search needed.'))}
     <div class="row wrap" style="margin-bottom:16px"><label class="inline-label">${tr('Studienplan','Study plan')} ${programmeOptions()}</label>
       <select id="schedule-sem" class="plan-select">${p.semesters.map(x=>`<option value="${x}" ${x===semester?'selected':''}>${semName(x)}</option>`).join('')}</select>
@@ -428,12 +437,12 @@ function gradeFinalCard(entries,simulated=false){
 }
 function forecastHtml(entry){
   const f=MasterPlanGrades.forecast(entry,entry.targetGrade??4);
-  if(!f.valid)return `<p role="status">${tr('Bitte gültige Noten von 1 bis 6 und positive Gewichtungen eingeben.','Enter valid grades from 1 to 6 and positive weights.')}</p>`;
-  return `<p>${tr('Bekanntes Gewicht','Known weight')}: ${formatNum(f.knownWeight)} / ${formatNum(f.weight)} · ${tr('Schnitt bekannter Teilnoten','Average of known components')}: ${gradeMetric(f.knownAverage)}</p>
+  if(!f.valid)return `<p role="status">${escape(f.error||tr('Bitte gültige Noten von 1 bis 6 und positive Gewichtungen eingeben.','Enter valid grades from 1 to 6 and positive weights.'))}</p>`;
+  return `${f.formula?`<p>${tr('Die eigene Formel bestimmt die Gewichtung; die Prozentspalte wird dabei nicht verwendet.','The custom formula determines weights; the percentage column is unused.')}</p>`:`<p>${tr('Bekanntes Gewicht','Known weight')}: ${formatNum(f.knownWeight)} / ${formatNum(f.weight)} · ${tr('Schnitt bekannter Teilnoten','Average of known components')}: ${gradeMetric(f.knownAverage)}</p>`}
     <p>${tr('Modulnote (nur echte Ergebnisse)','Module grade (actual results only)')}: <strong>${gradeMetric(f.value)}</strong> · ${tr('Mit Annahmen','With assumptions')}: <strong data-projected-grade>${gradeMetric(f.projected)}</strong></p>
     <p>${tr('Möglicher Bereich für offene Leistungen (Noten 1–6)','Possible range for remaining assessments (grades 1–6)')}: ${gradeMetric(f.min)}–${gradeMetric(f.max)}</p>
     ${f.required!=null?`<p>${tr('Benötigter Schnitt der offenen Leistungen für die Zielnote','Required average on remaining assessments for the target grade')}: <strong data-required-grade>${gradeMetric(f.required)}</strong> ${f.reachable===false?tr('(mit maximal 6 nicht erreichbar)','(not achievable with a maximum of 6)'):f.alreadySecured?tr('(auch mit Note 1 bereits gesichert)','(already secured even with grade 1)'):''}</p>`:''}
-    ${Math.abs(f.weight-100)>1e-8?`<p class="note">${tr('Die Gewichtungen werden relativ normalisiert; für Prozentangaben sollten sie zusammen 100 ergeben.','Weights are normalized relatively; percentage weights should total 100.')}</p>`:''}`;
+    ${f.reachable===false&&f.required==null?`<p class="note">${tr('Die Zielnote ist mit dieser Formel und dem Notenlimit nicht erreichbar.','The target grade cannot be reached with this formula and grade ceiling.')}</p>`:''}${f.formula?`<p class="hint">${tr('Formelbereich per Intervallrechnung. Benötigte Note: numerische Näherung, bei mehreren offenen Leistungen derselbe angenommene Wert.','Formula range uses interval arithmetic. Required grade is a numerical approximation using the same assumed grade for multiple pending assessments.')}</p>`:''}${!f.formula&&Math.abs(f.weight-100)>1e-8?`<p class="note">${tr('Die Gewichtungen werden relativ normalisiert; für Prozentangaben sollten sie zusammen 100 ergeben.','Weights are normalized relatively; percentage weights should total 100.')}</p>`:''}`;
 }
 function draftEditor(){
   if(!gradeDraft)return '';
@@ -447,14 +456,17 @@ function draftEditor(){
     <label>${tr('Notenkategorie','Grade category')}<select data-grade-input="category" ${sim?'disabled':''}>${['core','specialisation','specialisation-seminar','elective','thesis','excluded'].map(r=>`<option value="${r}" ${r===gradeCategoryChoice(e)?'selected':''}>${r==='excluded'?tr('Nicht in Schlussnote','Exclude from final grade'):escape(trRole(r))}</option>`).join('')}</select></label></div>
     <label class="check-row"><input type="checkbox" data-grade-input="countsForFinal" ${e.countsForFinal!==false?'checked':''} ${sim?'disabled':''}>${tr('Für Schlussnote auswählen','Select for final grade')}</label>
     ${e.actualMatched?`<p class="note">${tr('Echte Ergebnisse aus dem tatsächlichen Studium werden übernommen. Bekannte Teilnoten und ihre Gewichtungen sind hier geschützt.','Actual results from real studies are inherited. Known grades and their assessment weights are protected here.')}</p>`:''}
-    <div class="table-wrap"><table><thead><tr><th>${tr('Teilleistung','Assessment')}</th><th>${tr('Gewicht (%)','Weight (%)')}</th><th>${tr('Echte Note','Actual grade')}</th><th>${tr('Annahme für offene Leistung','Assumption for pending assessment')}</th><th></th></tr></thead><tbody>
-    ${e.parts.map((p,i)=>`<tr><td><input aria-label="${tr('Bezeichnung','Name')}" data-grade-part="${i}" data-grade-input="name" value="${attrs(p.id==='exam'&&p.name==='Exam'?tr('Prüfung','Exam'):p.name)}" ${p.structureLocked?'readonly':''}></td><td><input aria-label="${tr('Gewicht','Weight')}" type="number" min="0.001" step="any" data-grade-part="${i}" data-grade-input="weight" value="${attrs(p.weight)}" ${p.structureLocked?'readonly':''}></td>
+    <div class="card compact"><label>${tr('Eigene Notenformel (leer = gewichteter Durchschnitt)','Custom grade formula (blank = weighted average)')}<input data-grade-input="formula" value="${attrs(e.formula||'')}" maxlength="500" placeholder="max(F, 0.8*F + 0.2*M)" ${e.formulaLocked?'readonly':''}></label><div class="actions">${!e.formulaLocked?`${button(tr('Gewichteter Durchschnitt','Weighted average'),'formula-weighted')}${button('max(F, 0.8*F + 0.2*M)','formula-two')}${button('max(F, 0.8*F + 0.2*M1, 0.6*F + 0.2*M1 + 0.2*M2)','formula-three')}`:''}</div><p>${tr('Erlaubt: Variablen, Zahlen mit Dezimalpunkt, + − * /, Klammern, min(), max(). Keine Programmausführung.','Allowed: variables, decimal numbers, + − * /, parentheses, min(), max(). No program execution.')}</p></div>
+    <div class="table-wrap"><table><thead><tr><th>${tr('Variable','Variable')}</th><th>${tr('Teilleistung','Assessment')}</th><th>${tr('Gewicht (%)','Weight (%)')}</th><th>${tr('Echte Note','Actual grade')}</th><th>${tr('Annahme für offene Leistung','Assumption for pending assessment')}</th><th></th></tr></thead><tbody>
+    ${e.parts.map((p,i)=>`<tr><td><input aria-label="Variable" data-grade-part="${i}" data-grade-input="variable" value="${attrs(MasterPlanFormula.variable(p,i))}" pattern="[A-Za-z][A-Za-z0-9_]*" ${p.structureLocked?'readonly':''}></td><td><input aria-label="${tr('Bezeichnung','Name')}" data-grade-part="${i}" data-grade-input="name" value="${attrs(p.id==='exam'&&p.name==='Exam'?tr('Prüfung','Exam'):p.name)}" ${p.structureLocked?'readonly':''}></td><td><input aria-label="${tr('Gewicht','Weight')}" type="number" min="0.001" step="any" data-grade-part="${i}" data-grade-input="weight" value="${attrs(p.weight)}" ${p.structureLocked?'readonly':''}></td>
     <td><input aria-label="${tr('Echte Note','Actual grade')}" type="number" min="1" max="6" step="any" data-grade-part="${i}" data-grade-input="value" value="${attrs(p.value??'')}" ${sim?'readonly':''}></td>
     <td><input aria-label="${tr('Annahme','Assumption')}" type="number" min="1" max="6" step="any" data-grade-part="${i}" data-grade-input="estimate" value="${attrs(p.estimate??'')}" ${p.actualLocked||p.value!=null?'disabled':''}></td><td>${!p.structureLocked?button('×','grade-part-remove',`data-index="${i}" aria-label="${tr('Teilleistung entfernen','Remove assessment')}"`):'🔒'}</td></tr>`).join('')}</tbody></table></div>
     ${!e.actualMatched?button('+ '+tr('Teilleistung','Assessment'),'grade-part-add'):''}
     <div class="filterbar"><label>${tr('Additiver Notenbonus (z. B. +0,25)','Additive grade bonus (e.g. +0.25)')}<input type="number" step="any" min="-6" max="6" data-grade-input="bonus" value="${attrs(e.bonus??0)}" ${e.bonusLocked?'readonly':''}></label>
+    <label>${tr('Bonusplatzierung','Bonus placement')}<select data-grade-input="bonusPlacement" ${e.formulaLocked?'disabled':''}><option value="after" ${e.bonusPlacement!=='formula'?'selected':''}>${tr('Nach der Formel addieren','Add after formula')}</option><option value="formula" ${e.bonusPlacement==='formula'?'selected':''}>${tr('Als Variable B in eigener Formel','As variable B in custom formula')}</option></select></label>
+    <label>${tr('Maximale Modulnote','Module grade ceiling')}<input type="number" min="1" max="6" step="any" data-grade-input="gradeCeiling" value="${attrs(e.gradeCeiling??6)}" ${e.formulaLocked?'readonly':''}></label>
     <label>${tr('Gewünschte Modulnote','Target module grade')}<input type="number" min="1" max="6" step="any" data-grade-input="targetGrade" value="${attrs(e.targetGrade??4)}"></label></div>
-    <p class="hint">${tr('Echte Noten nur für bereits bewertete Leistungen eintragen. Offene Noten leer lassen und separat als Annahme testen. Der Bonus wird nach dem gewichteten Durchschnitt addiert; maximal Note 6.','Enter actual grades only for assessed work. Leave pending grades blank and test them separately as assumptions. The bonus is added after the weighted average; grades are capped at 6.')}</p>
+    <p class="hint">${tr('Echte Noten nur für bereits bewertete Leistungen eintragen. Offene Noten leer lassen und separat als Annahme testen. Bonusplatzierung und maximale Modulnote sind oben einstellbar.','Enter actual grades only for assessed work. Leave pending grades blank and test them separately as assumptions. Configure bonus placement and the module grade ceiling above.')}</p>
     <div id="grade-preview" aria-live="polite">${forecastHtml(e)}</div><div class="actions"><button class="button" type="submit">${tr('Übernehmen','Apply')}</button>${button(tr('Abbrechen','Cancel'),'grade-draft-cancel')}</div></form></div>`;
 }
 function renderGradeEditor(){
@@ -465,19 +477,19 @@ function renderGradeEditor(){
 }
 function simulationEntries(s){
   const plan=allPlans().find(p=>p.id===s.planId);if(!plan)return [];
-  return MasterPlanGrades.scenarioCourses(plan,state.history||[]).map(c=>MasterPlanGrades.simulationEntry(c,s.entries[MasterPlanGrades.key(c)],gradesCache.entries,s.planId==='actual'));
+  return MasterPlanGrades.scenarioCourses(plan,state.history||[]).map(c=>MasterPlanGrades.simulationEntry(c,s.entries[MasterPlanGrades.key(c)],gradesCache.entries,s.useActual??(s.planId==='actual')));
 }
 function simulationPanel(){
   const sims=gradesCache.simulations;
   const selected=sims.find(s=>s.id===activeSimulation)||sims[0];activeSimulation=selected?.id||null;
   const entries=selected?simulationEntries(selected):[];
-  return `<p class="note">${tr('Simulationen sind hypothetisch und ändern weder echte Noten noch Semesterzuweisungen. Beim tatsächlichen Studienplan werden eindeutig zugeordnete echte Ergebnisse automatisch übernommen.','Simulations are hypothetical and change neither actual grades nor course allocations. Selecting actual studies automatically inherits unambiguously linked real results.')}</p>
-    <form id="simulation-create-form" class="card"><label>${tr('Neues Notenszenario','New grade scenario')}<input name="name" required maxlength="150" placeholder="${tr('z. B. Optimistisch','e.g. Optimistic')}"></label><button class="button" type="submit">${tr('Szenario erstellen','Create scenario')}</button></form>
+  return `<p class="note">${tr('Simulationen sind hypothetisch und ändern weder echte Noten noch Semesterzuweisungen. Beim Erstellen entscheidest du ausdrücklich, ob echte Ergebnisse übernommen werden.','Simulations are hypothetical and change neither actual grades nor course allocations. When creating a scenario, explicitly choose whether to inherit actual results.')}</p>
+    <form id="simulation-create-form" class="card"><label>${tr('Neues Notenszenario','New grade scenario')}<input name="name" required maxlength="150" placeholder="${tr('z. B. Optimistisch','e.g. Optimistic')}"></label><label>${tr('Echte Ergebnisse übernehmen?','Inherit actual results?')}<select name="useActual" required><option value="">${tr('Bitte auswählen','Choose explicitly')}</option><option value="yes">${tr('Ja','Yes')}</option><option value="no">${tr('Nein','No')}</option></select></label><button class="button" type="submit">${tr('Szenario erstellen','Create scenario')}</button></form>
     <div class="actions">${button(tr('Verschlüsselt speichern','Save encrypted'),'grade-save','','button')}</div>
     ${selected?`<div class="card spaced"><label>${tr('Notenszenario','Grade scenario')}<select id="simulation-select">${sims.map(s=>`<option value="${attrs(s.id)}" ${s.id===selected.id?'selected':''}>${escape(s.name)}</option>`).join('')}</select></label>
     <label>${tr('Semesterplanung auswählen','Choose study plan')}<select id="simulation-plan">${!allPlans().some(p=>p.id===selected.planId)?`<option selected value="">${tr('Plan wurde entfernt – bitte auswählen','Plan was removed – choose another')}</option>`:''}${allPlans().map(p=>`<option value="${attrs(p.id)}" ${p.id===selected.planId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label>${button(tr('Szenario duplizieren','Duplicate scenario'),'simulation-duplicate')}${button(tr('Szenario löschen','Delete scenario'),'simulation-delete')}</div>
-    ${gradeFinalCard(entries,true)}
-    ${entries.map(e=>`<div class="card spaced"><h3>${escape(e.name)}</h3><p>${escape(trRole(MasterPlanRules.allocationRole({role:e.category,subtype:e.subtype})))}</p>${e.actualMatched?pill(tr('Echte Ergebnisse übernommen','Actual results inherited'),'green'):''}<p>${tr('Simulierte Modulnote','Simulated module grade')}: ${gradeMetric(MasterPlanGrades.forecast(e).projected)}</p>${button(tr('Teilnoten / Annahmen','Components / assumptions'),'simulation-edit',`data-key="${attrs(MasterPlanGrades.key({...e,id:e.courseId}))}"`)}</div>`).join('')||`<p>${tr('Dem gewählten Plan sind noch keine anrechenbaren Module zugewiesen.','The selected plan has no credit-bearing courses assigned yet.')}</p>`}${draftEditor()}`:''}`;
+    ${gradeFinalCard(entries,true)}${statisticsAdjustment(selected)}
+    ${entries.map(e=>`<div class="card spaced"><h3>${escape(e.name)}</h3><p>${escape(trRole(MasterPlanRules.allocationRole({role:e.category,subtype:e.subtype})))}</p>${e.statistics?`<p>${tr('Statistik','Statistics')}: μ ${e.statistics.mean??e.statistics.grade??'—'} · σ ${e.statistics.stddev??'—'} · n ${e.statistics.sampleSize??'—'} · ${tr('Prüfungssemester','Exam term')}: ${semName(e.statistics.semester)}</p><pre>${escape(JSON.stringify(e.statistics.source||{},null,2))}</pre>`:''}${e.statistics&&Object.hasOwn(e,'statisticalGrade')&&e.statisticalGrade==null?`<p class="note">${tr('Statistische Annahme unbekannt: Mittelwert oder benötigte Standardabweichung fehlt.','Statistical assumption unknown: missing mean or required standard deviation.')}</p>`:''}${e.statisticUnreachable?`<p class="note">${tr('Statistisches Ziel mit den echten Teilnoten nicht erreichbar; Annahme bleibt offen.','Statistical target cannot be reached with actual components; assumption remains pending.')}</p>`:''}${e.actualMatched?pill(tr('Echte Ergebnisse übernommen','Actual results inherited'),'green'):''}<p>${tr('Simulierte Modulnote','Simulated module grade')}: ${gradeMetric(MasterPlanGrades.forecast(e).projected)}</p>${button(tr('Teilnoten / Annahmen','Components / assumptions'),'simulation-edit',`data-key="${attrs(MasterPlanGrades.key({...e,id:e.courseId}))}"`)}</div>`).join('')||`<p>${tr('Dem gewählten Plan sind noch keine anrechenbaren Module zugewiesen.','The selected plan has no credit-bearing courses assigned yet.')}</p>`}${draftEditor()}`:''}${statisticsTools()}`;
 }
 async function privateAction(action,element){
   if(action==='grade-add'||action==='grade-edit'){
@@ -505,7 +517,7 @@ function applyGradeDraft(){
     const s=gradesCache.simulations.find(s=>s.id===gradeDraft.scenarioId);
     // Persist assumptions only; actual marks are read afresh from the real vault on every render.
     const entry=structuredClone(e);entry.parts=entry.parts.map(p=>({...p,value:null,actualLocked:undefined,structureLocked:undefined}));
-    delete entry.actualMatched;delete entry.bonusLocked;s.entries[gradeDraft.key]=entry;
+    delete entry.actualMatched;delete entry.bonusLocked;delete entry.formulaLocked;delete entry.statisticUnreachable;delete entry.statisticalGrade;s.entries[gradeDraft.key]=entry;
   }
   gradeDraft=null;render();notify(tr('Im Notenspeicher vorgemerkt – bitte verschlüsselt speichern.','Updated in memory – please save encrypted.'));
 }
@@ -588,8 +600,22 @@ function editEvents(course,planKey=state.activePlan) {
 function formVal(form,name){return new FormData(form).get(name)?.toString().trim()||'';}
 async function executeAction(action,element) {
   const p=getPlan(element.dataset.planId||state.activePlan), cid=element.dataset.id, course=p.courses.find(x=>x.id===cid);
+  if(['copy-prompt','export-study-json','export-study-csv','export-preparation','exchange-apply'].includes(action))return exchangeAction(action,element);
+  if(action.startsWith('formula-')){
+    const e=gradeDraft.entry;if(e.formulaLocked)return;
+    if(action==='formula-weighted'){e.formula='';e.bonusPlacement='after';}else{
+      const names=action==='formula-two'?['M','F']:['M1','M2','F'],old=[...e.parts],used=new Set();
+      const choose=(name,index)=>{let part=old.find(p=>p.variable===name)||(name==='M1'?old.find(p=>p.variable==='M'):name==='M'?old.find(p=>p.variable==='M1'):null);
+        if(!part&&!old.some(p=>p.variable))part=old[index];
+        if(!part||used.has(part))part={id:id(),name:name==='F'?tr('Abschlussprüfung','Final exam'):tr('Zwischenprüfung','Midterm')+' '+name,weight:1,value:null,estimate:null};
+        used.add(part);return {...part,variable:name};};
+      e.parts=names.map((name,i)=>choose(name,names.length===3&&name==='F'?1:i));
+      for(const part of old)if(!used.has(part))e.parts.push({...part,variable:`P${e.parts.length+1}`});
+      e.formula=action==='formula-two'?'max(F, 0.8*F + 0.2*M)':'max(F, 0.8*F + 0.2*M1, 0.6*F + 0.2*M1 + 0.2*M2)';
+    }render();return;
+  }
   if(action==='module-editor-cancel'){moduleDraft=null;render();return;}
-  if(action==='course-details'){detailsBack=page;detailCourse={title:element.dataset.title,number:element.dataset.number,unitId:element.dataset.unitId?Number(element.dataset.unitId):null,sourceSemester:element.dataset.sourceSemester};changePage('course-details');await loadCourseDetails();return;}
+  if(action==='course-details'){detailsBack=page;detailCourse={title:element.dataset.title,number:element.dataset.number,unitId:element.dataset.unitId?Number(element.dataset.unitId):null,sourceSemester:element.dataset.sourceSemester,semester:element.dataset.targetSemester};changePage('course-details');await loadCourseDetails();return;}
   if(action==='close-details'){changePage(detailsBack);return;}
   if(action==='retry-details'){unitDetailsCache.delete(String(detailCourse.unitId));await loadCourseDetails();return;}
   if(action==='choose-schedule-module'){const form=$('#event-form');if(form&&course){form.elements.namedItem('course').value=course.id;$('#manual-vvz-link').innerHTML=courseLinks(course);document.querySelectorAll('[data-schedule-course]').forEach(e=>e.setAttribute('aria-pressed',String(e.dataset.scheduleCourse===course.id)));}return;}
@@ -696,6 +722,77 @@ addEventListener('change',async event=>{const e=event.target;
   }
 if(e.id==='compare-left-plan'||e.id==='compare-right-plan'){const side=e.id==='compare-left-plan'?'left':'right';comparison[side+'Plan']=e.value;const selected=getPlan(e.value);comparison[side+'Semester']=selected?.semesters.includes(comparison[side+'Semester'])?comparison[side+'Semester']:(selected?.semesters.includes(comparison[side==='left'?'rightSemester':'leftSemester'])?comparison[side==='left'?'rightSemester':'leftSemester']:selected?.semesters[0]||null);render();return;}if(e.id==='compare-left-sem'||e.id==='compare-right-sem'){comparison[e.id==='compare-left-sem'?'leftSemester':'rightSemester']=e.value;render();return;}if(e.dataset.change==='active-plan'){await save(s=>s.activePlan=e.value);return;}if(e.id==='schedule-sem'){schedule.current=e.value;assignmentContext=null;render();void syncMeetingOptions();return;}if(e.id==='scenario-specialisation'){await save(s=>{editPlan(s,s.activePlan).specialisation=e.value;});return;}if(e.id==='bsc-scientific'){await save(s=>{s.scientificWorksBSc=e.checked;});return;}if(e.dataset.spec){await save(s=>{const i=s.selectedSpecialisations.indexOf(e.dataset.spec);if(e.checked&&i<0)s.selectedSpecialisations.push(e.dataset.spec);if(!e.checked&&i>=0)s.selectedSpecialisations.splice(i,1);});return;}if(e.id==='import-file'&&e.files?.[0]){try{if(e.files[0].size>2_000_000)throw Error('File too large');const value=JSON.parse(await e.files[0].text());if(!confirm(tr('Bestehende Pläne ersetzen?','Replace existing plans?')))return;state=await request('/api/import','POST',value);render();notify(tr('Importiert.','Imported.'));}catch(err){notify(err.message);}}});
 addEventListener('submit',async event=>{const form=event.target;if(form.id==='module-edit-form'){event.preventDefault();await applyModuleEditor(form);return;}if(form.id==='assign-course-form'){event.preventDefault();return;}if(form.id==='search-form'){event.preventDefault();searchParams={q:formVal(form,'q'),programme:formVal(form,'programme'),category:formVal(form,'category'),semester:[formVal(form,'semester'),formVal(form,'semester2')].filter((v,i,a)=>v&&a.indexOf(v)===i).join(',')};await runCatalogSearch();return;}if(form.id==='event-form'){event.preventDefault();const p=plan(),selected=formVal(form,'course'),c=p.courses.find(x=>x.id===selected);if(!c)return notify(tr('Kurs auswählen.','Choose course.'));if(fixed(c,p))return notify(tr('Kurs oder Semester fixiert.','Course or semester locked.'));const day=Number(formVal(form,'day')),start=formVal(form,'start'),end=formVal(form,'end');if(!(day>=0&&day<=6&&/^\d{2}:\d{2}$/.test(start)&&/^\d{2}:\d{2}$/.test(end)&&start<end))return notify(tr('Ungültiger Termin.','Invalid time.'));await save(s=>{editPlan(s,p.id).courses.find(x=>x.id===c.id).events.push({day,start,end,building:formVal(form,'building'),floor:formVal(form,'floor'),room:formVal(form,'room'),source:'manual'});});return;}if(form.id==='grades-unlock-form'){event.preventDefault();const password=formVal(form,'password');try{await unlockGrades(password);render();}catch(e){notify(e.message);}return;}});
+let exchangeDraft=null,exchangeSource='',exchangeMode='statistics';
+function moduleKey(c){return c.number?'number:'+String(c.number).replace(/\s+/g,'').toUpperCase():c.unitId?'unit:'+c.unitId:'title:'+String(c.title||'').trim().toLowerCase();}
+function insightPanel(c){
+  const info=state.moduleInsights?.[moduleKey(c)]||{},prep=info.preparations?(info.preparations[c.semester]||info.preparations.unspecified):(!info.preparation?.semester||info.preparation.semester===c.semester?info.preparation:null);
+  return `<div class="card spaced"><h2>${tr('Persönliche Modulnotizen','Personal course notes')}</h2><form id="module-notes-form" data-key="${attrs(moduleKey(c))}"><textarea name="notes" rows="5" maxlength="20000">${escape(info.notes||'')}</textarea><button type="submit" class="button">${tr('Notizen speichern','Save notes')}</button></form></div>
+  ${prep?`<div class="card spaced" id="preparation-assessment"><h2>${tr('Importierte Vorbereitungseinschätzung','Imported preparation assessment')}</h2><p>${escape(prep.assessment)}</p><p>${tr('Bewertetes Semester','Assessed semester')}: ${semName(prep.semester)}</p><p>${tr('Sicherheit','Confidence')}: ${escape(({low:tr('Niedrig','Low'),medium:tr('Mittel','Medium'),high:tr('Hoch','High'),unknown:tr('Unbekannt','Unknown')})[prep.confidence]||prep.confidence)}</p>${[['prerequisites',tr('Voraussetzungen','Prerequisites')],['gaps',tr('Mögliche Lücken','Possible gaps')],['recommendations',tr('Vorbereitung','Preparation')]].map(([key,label])=>`<h3>${label}</h3><ul>${(prep[key]||[]).map(s=>`<li>${escape(s)}</li>`).join('')}</ul>`).join('')}<pre>${escape(JSON.stringify(prep.source||{},null,2))}</pre><p class="hint">${tr('KI-Einschätzung, keine offizielle Zulassungsentscheidung.','AI assessment, not an official eligibility decision.')}</p></div>`:''}`;
+}
+function promptPanel(kind){return `<details class="card spaced"><summary>${tr('ChatGPT-Prompts: Deutsch / Englisch','ChatGPT prompts: German / English')}</summary>${['de','en'].map(lang=>`<h3>${lang==='de'?'Deutsch':'English'}</h3><textarea readonly rows="9" aria-label="${kind} prompt ${lang}">${escape(MasterPlanExchange.prompt(kind,lang))}</textarea>${button(tr('Prompt kopieren','Copy prompt'),'copy-prompt',`data-kind="${kind}" data-lang="${lang}"`)}`).join('')}</details>`;}
+function downloadObject(value,filename,type='application/json'){
+  const blob=new Blob([typeof value==='string'?value:JSON.stringify(value,null,2)],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function exchangeForm(kind){
+  const privateImport=kind==='statistics',selectedPlan=exchangeDraft?.kind===kind?exchangeDraft.planId:state.activePlan;
+  const data=exchangeDraft?.kind===kind?exchangeDraft.data:null,p=allPlans().find(p=>p.id===selectedPlan)||actual(),courses=MasterPlanGrades.scenarioCourses(p,state.history||[]);
+  const mapped=data?data.courses.map(row=>({row,matches:courses.filter(c=>MasterPlanExchange.match(c,data.courses)===row&&(kind!=='preparation'||!row.semester||c.semester===row.semester))})):[];
+  return `<div class="card spaced" id="exchange-panel"><h2>${privateImport?tr('Statistik / Notenszenario als JSON importieren','Import statistics / grade scenario JSON'):tr('Vorbereitungseinschätzung als JSON importieren','Import preparation assessment JSON')}</h2>
+    <form id="exchange-form" data-kind="${kind}"><label>${tr('Zielstudienplan','Target study plan')}<select name="plan">${allPlans().map(p=>`<option value="${attrs(p.id)}" ${p.id===selectedPlan?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label>
+    <label>${tr('JSON-Datei','JSON file')}<input type="file" id="exchange-file" accept="application/json,.json"></label><label>JSON<textarea name="json" rows="6" maxlength="2000000">${escape(exchangeMode===kind?exchangeSource:'')}</textarea></label>
+    ${privateImport?`<label>${tr('Beim Szenario echte Ergebnisse übernehmen?','Inherit actual results for the scenario?')}<select name="useActual"><option value="">${tr('Bitte auswählen','Choose explicitly')}</option><option value="yes" ${exchangeDraft?.useActual==='yes'?'selected':''}>${tr('Ja','Yes')}</option><option value="no" ${exchangeDraft?.useActual==='no'?'selected':''}>${tr('Nein','No')}</option></select></label>`:''}
+    <button type="submit" class="button">${tr('Import prüfen / Vorschau','Validate import / preview')}</button></form>
+    ${data?`<div id="exchange-preview"><h3>${escape(data.name||data.kind)} · ${data.courses.length} ${tr('Einträge','entries')}</h3><p>${mapped.filter(x=>x.matches.length===1).length} ${tr('eindeutig zugeordnet','unambiguously matched')} · ${mapped.filter(x=>x.matches.length!==1).length} ${tr('nicht eindeutig – werden übersprungen','unmatched/ambiguous – will be skipped')}</p><div class="table-wrap"><table><thead><tr><th>${tr('Modul','Course')}</th><th>${tr('Semester','Semester')}</th><th>${tr('Details','Details')}</th><th>${tr('Zuordnung','Match')}</th></tr></thead><tbody>${mapped.map(x=>`<tr><td>${escape(x.row.title||x.row.number)}<div class="tiny">${escape(x.row.number||'')}</div></td><td>${escape(x.row.semester||'—')}</td><td>${privateImport?`${x.row.mean??x.row.grade??'—'} · σ ${x.row.stddev??'—'} · n ${x.row.sampleSize??'—'}`:escape(x.row.confidence)}</td><td>${x.matches.length===1?'✓':tr('Unklar','Unclear')}</td></tr>`).join('')}</tbody></table></div>${button(tr('Geprüften Import übernehmen','Apply validated import'),'exchange-apply','','button')}</div>`:''}
+    </div>${promptPanel(privateImport?'statistics':'preparation')}`;
+}
+function studyTools(){return `<div class="card spaced" id="study-tools"><h2>${tr('Studienplan exportieren & Vorbereitung prüfen','Export study plan & review preparation')}</h2><label>${tr('Studienplan','Study plan')}<select id="export-plan">${allPlans().map(p=>`<option value="${attrs(p.id)}" ${p.id===state.activePlan?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label><label class="check-row"><input type="checkbox" id="export-notes">${tr('Persönliche Notizen in den Vorbereitungsexport aufnehmen','Include personal notes in preparation export')}</label><div class="actions">${button('JSON','export-study-json')}${button('CSV','export-study-csv')}${button(tr('Vorbereitungsexport mit Kursinformationen','Preparation export with course information'),'export-preparation')}</div></div>${exchangeForm('preparation')}`;}
+function statisticsTools(){
+  const datasets=gradesCache.statistics||[];
+  return `${exchangeForm('statistics')}${datasets.length?`<div class="card spaced"><h2>${tr('Szenario aus Prüfungsstatistiken','Scenario from exam statistics')}</h2><form id="statistics-scenario-form">
+    <label>${tr('Name','Name')}<input name="name" required maxlength="150" value="${tr('Durchschnittsstudent','Average student')}"></label>
+    <label>${tr('Datensatz','Dataset')}<select name="dataset">${datasets.map(d=>`<option value="${attrs(d.id)}">${escape(d.name)}</option>`).join('')}</select></label>
+    <label>${tr('Studienplan','Study plan')}<select name="plan">${allPlans().map(p=>`<option value="${attrs(p.id)}" ${p.id===state.activePlan?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label>
+    <label>${tr('Faktor der Standardabweichung (−1 = eine schlechter, +1 = eine besser)','Standard deviation factor (−1 = one worse, +1 = one better)')}<input type="number" name="factor" min="-10" max="10" step="any" value="0"></label>
+    <label>${tr('Echte Ergebnisse übernehmen?','Inherit actual results?')}<select name="useActual" required><option value="">${tr('Bitte auswählen','Choose explicitly')}</option><option value="yes">${tr('Ja','Yes')}</option><option value="no">${tr('Nein','No')}</option></select></label>
+    <button type="submit" class="button">${tr('Statistikszenario erstellen','Create statistical scenario')}</button></form></div>`:''}`;
+}
+function createStatisticalScenario(data,planId,useActual,factor=0,name=null){
+  const p=allPlans().find(p=>p.id===planId);if(!p)throw Error('Plan missing');
+  const s={id:id(),name:name||data.name||tr('Importiertes Szenario','Imported scenario'),planId,useActual,entries:{},statisticsId:data.id||null,sigmaFactor:factor};
+  for(const c of MasterPlanGrades.scenarioCourses(p,state.history||[])){
+    const row=MasterPlanExchange.match(c,data.courses);if(!row)continue;
+    const grade=data.kind==='masterplan-grade-scenario'?row.grade:MasterPlanExchange.statisticalGrade(row,factor);
+    const e=MasterPlanGrades.baseEntry(c);e.statisticalGrade=grade;if(data.kind==='masterplan-statistics')e.statistics=structuredClone(row);else e.importedScenario=structuredClone(row);e.parts[0].estimate=grade??null;s.entries[MasterPlanGrades.key(c)]=e;
+  }
+  gradesCache.simulations.push(s);activeSimulation=s.id;gradeDraft=null;return s;
+}
+async function exchangeAction(action,element){
+  if(action==='copy-prompt'){const value=MasterPlanExchange.prompt(element.dataset.kind,element.dataset.lang);try{await navigator.clipboard.writeText(value);notify(tr('Prompt kopiert.','Prompt copied.'));}catch{notify(tr('Bitte den Prompt im Textfeld markieren und kopieren.','Select and copy the prompt text.'));}return;}
+  if(action.startsWith('export-study')||action==='export-preparation'){
+    const p=allPlans().find(p=>p.id===$('#export-plan').value),courses=allCourses(p),data=MasterPlanExchange.planExport(p,courses);
+    if(action==='export-preparation'){
+      const includeNotes=$('#export-notes').checked;let failed=0;
+      for(let i=0;i<data.courses.length;i++){
+        const c=courses.find(c=>c.id===data.courses[i].id),out=data.courses[i];
+        if(c?.unitId){try{const key=String(c.unitId);if(!unitDetailsCache.has(key))unitDetailsCache.set(key,{unit:(await request('/api/vvz/unit/'+key)).unit});const unit=unitDetailsCache.get(key).unit;if(unit)out.courseInformation=Object.fromEntries(['abstract','abstract_english','objective','objective_english','content','content_english'].map(k=>[k,unit[k]||null]));else failed++;}catch{out.courseInformation=null;failed++;}}
+        if(includeNotes&&c)out.personalNotes=state.moduleInsights?.[moduleKey(c)]?.notes||'';
+      }
+      data.kind='masterplan-preparation-context';downloadObject(data,'masterplan-preparation.json');if(failed)notify(`${failed} ${tr('Kursinformationen nicht verfügbar; VVZ-Links sind enthalten.','course descriptions unavailable; VVZ links are included.')}`);return;
+    }
+    downloadObject(action==='export-study-csv'?MasterPlanExchange.csv(data):data,action==='export-study-csv'?'masterplan-courses.csv':'masterplan-courses.json',action==='export-study-csv'?'text/csv':'application/json');return;
+  }
+  if(action==='exchange-apply'){
+    if(!exchangeDraft)return;const {data,kind}=exchangeDraft,p=allPlans().find(p=>p.id===exchangeDraft.planId);
+    if(kind==='statistics'){
+      if(data.kind==='masterplan-statistics'){if((gradesCache.statistics||[]).length>=100)throw Error(tr('Maximal 100 Statistikdatensätze.','Maximum 100 statistics datasets.'));gradesCache.statistics=gradesCache.statistics||[];gradesCache.statistics.push({...structuredClone(data),id:id(),name:data.name||tr('Prüfungsstatistik','Exam statistics')});}
+      else{const choice=formVal($('#exchange-form'),'useActual');if(!['yes','no'].includes(choice))throw Error(tr('Bitte echte Notenübernahme auswählen.','Choose whether to inherit actual grades.'));createStatisticalScenario(data,p.id,choice==='yes');}
+      exchangeDraft=null;exchangeSource='';render();notify(tr('Import vorgemerkt. Bitte verschlüsselt speichern.','Import applied in memory. Please save encrypted.'));return;
+    }
+    const updates=[];for(const row of data.courses){const matches=allCourses(p).filter(c=>MasterPlanExchange.match(c,[row])&&(!row.semester||c.semester===row.semester));if(matches.length===1)updates.push([moduleKey(matches[0]),row]);}
+    if(await save(s=>{s.moduleInsights=s.moduleInsights||{};for(const [key,row] of updates)s.moduleInsights[key]={...s.moduleInsights[key],preparation:row,preparations:{...s.moduleInsights[key]?.preparations,[row.semester||'unspecified']:row}};})){exchangeDraft=null;exchangeSource='';render();}return;
+  }
+}
+
 $('#lang-toggle').addEventListener('click',()=>save(s=>s.language=s.language==='de'?'en':'de'));
 $('#theme-toggle').addEventListener('click',()=>save(s=>s.theme=s.theme==='light'?'dark':'light'));
 $('#menu-toggle').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
@@ -725,7 +822,7 @@ function fillScheduleSlot(day,start,courseId=null){
   const course=plan().courses.find(c=>c.id===formVal(form,'course'));
   if(!course||course.semester!==schedule.current||fixed(course,plan()))return notify(tr('Modul nicht verfügbar oder gesperrt.','Module unavailable or locked.'));
   form.elements.namedItem('day').value=day;form.elements.namedItem('start').value=start;
-  form.elements.namedItem('end').value=`${String(Math.min(23,Number(start.slice(0,2))+1)).padStart(2,'0')}:${start.slice(3)}`;
+  form.elements.namedItem('end').value=Number(start.slice(0,2))===23?'23:59':`${String(Number(start.slice(0,2))+1).padStart(2,'0')}:${start.slice(3)}`;
   $('#manual-vvz-link').innerHTML=courseLinks(course);form.scrollIntoView({block:'center',behavior:'smooth'});form.elements.namedItem('start').focus();
 }
 let draggedScheduleCourse=null;
@@ -739,13 +836,13 @@ addEventListener('input',event=>{
   const e=event.target;if(!e.matches('[data-grade-input]')||!gradeDraft)return;
   const field=e.dataset.gradeInput,index=e.dataset.gradePart;
   if(index!=null){const part=gradeDraft.entry.parts[Number(index)];if(!part)return;
-    if(gradeDraft.kind==='simulation'&&(field==='value'||part.structureLocked&&['name','weight'].includes(field)||part.actualLocked))return;
+    if(gradeDraft.kind==='simulation'&&(field==='value'||part.structureLocked&&['name','weight','variable'].includes(field)||part.actualLocked))return;
     part[field]=['value','estimate','weight'].includes(field)?privateNumber(e.value):e.value;
     if(field==='value'){const estimate=e.closest('tr').querySelector('[data-grade-input="estimate"]');if(estimate)estimate.disabled=part.value!=null;}
   }else if(field==='category'){const category=MasterPlanRules.allocationCategory(e.value);gradeDraft.entry.category=category.role;gradeDraft.entry.subtype=category.subtype;gradeDraft.entry.countsForFinal=e.value!=='excluded'&&e.value!=='specialisation-seminar';}
   else if(field==='countsForFinal')gradeDraft.entry.countsForFinal=e.checked;
-  else if(field==='bonus'&&gradeDraft.entry.bonusLocked)return;
-  else {gradeDraft.entry[field]=['bonus','targetGrade'].includes(field)?privateNumber(e.value):e.value;if(field==='bonus'&&gradeDraft.kind==='real')gradeDraft.entry.bonusKnown=true;}
+  else if((field==='bonus'&&gradeDraft.entry.bonusLocked)||(gradeDraft.entry.formulaLocked&&['formula','bonusPlacement','gradeCeiling'].includes(field)))return;
+  else {gradeDraft.entry[field]=['bonus','targetGrade','gradeCeiling'].includes(field)?privateNumber(e.value):e.value;if(field==='bonus'&&gradeDraft.kind==='real')gradeDraft.entry.bonusKnown=true;}
   const preview=$('#grade-preview');if(preview)preview.innerHTML=forecastHtml(gradeDraft.entry);
 });
 addEventListener('change',event=>{
@@ -756,6 +853,39 @@ addEventListener('change',event=>{
 });
 addEventListener('submit',event=>{
   const form=event.target;
-  if(form.id==='simulation-create-form'){event.preventDefault();const name=formVal(form,'name');if(!name||!gradesCache)return;const s={id:id(),name,planId:state.activePlan,entries:{}};gradesCache.simulations.push(s);activeSimulation=s.id;gradeDraft=null;render();}
+  if(form.id==='simulation-create-form'){event.preventDefault();const name=formVal(form,'name'),choice=formVal(form,'useActual');if(!name||!gradesCache||!['yes','no'].includes(choice))return;const s={id:id(),name,planId:state.activePlan,useActual:choice==='yes',entries:{}};gradesCache.simulations.push(s);activeSimulation=s.id;gradeDraft=null;render();}
   if(form.id==='grade-entry-form'){event.preventDefault();try{applyGradeDraft();}catch(e){notify(e.message);}}
 });
+
+addEventListener('submit',async event=>{
+  const form=event.target;
+  if(form.id==='module-notes-form'){event.preventDefault();const key=form.dataset.key,notes=new FormData(form).get('notes')?.toString()||'';if(await save(s=>{s.moduleInsights=s.moduleInsights||{};s.moduleInsights[key]={...s.moduleInsights[key],notes};}))notify(tr('Notizen gespeichert.','Notes saved.'));}
+  if(form.id==='exchange-form'){
+    event.preventDefault();try{exchangeSource=new FormData(form).get('json')?.toString()||'';const data=MasterPlanExchange.parse(exchangeSource),kind=form.dataset.kind;
+      if(kind==='statistics'&&!['masterplan-statistics','masterplan-grade-scenario'].includes(data.kind)||kind==='preparation'&&data.kind!=='masterplan-preparation')throw Error(tr('Falscher Importtyp.','Incorrect import type.'));
+      exchangeMode=kind;exchangeDraft={kind,data,planId:formVal(form,'plan'),useActual:formVal(form,'useActual')};render();$('#exchange-preview')?.scrollIntoView({block:'center'});
+    }catch(e){notify(e.message);}
+  }
+  if(form.id==='statistics-scenario-form'){
+    event.preventDefault();try{const dataset=gradesCache.statistics.find(d=>d.id===formVal(form,'dataset')),choice=formVal(form,'useActual');if(!['yes','no'].includes(choice))throw Error(tr('Bitte Notenübernahme wählen.','Choose actual-grade inheritance.'));createStatisticalScenario(dataset,formVal(form,'plan'),choice==='yes',Number(formVal(form,'factor')),formVal(form,'name'));render();}catch(e){notify(e.message);}
+  }
+  if(form.id==='statistics-adjust-form'){
+    event.preventDefault();try{const s=gradesCache.simulations.find(s=>s.id===activeSimulation),factor=Number(formVal(form,'factor')),keys=new FormData(form).getAll('modules'),p=allPlans().find(p=>p.id===s.planId),courses=MasterPlanGrades.scenarioCourses(p,state.history||[]);
+      const updates=keys.map(key=>{const old=s.entries[key],c=courses.find(c=>MasterPlanGrades.key(c)===key);if(!old?.statistics||!c)throw Error('Module missing');const e=MasterPlanGrades.baseEntry(c);e.statistics=old.statistics;e.statisticalGrade=MasterPlanExchange.statisticalGrade(old.statistics,factor);e.parts[0].estimate=e.statisticalGrade;e.sigmaFactor=factor;return [key,e];});
+      if(!updates.length)throw Error(tr('Mindestens ein Modul auswählen.','Select at least one course.'));for(const [key,e] of updates)s.entries[key]=e;s.sigmaFactor=factor;gradeDraft=null;render();
+    }catch(e){notify(e.message);}
+  }
+});
+addEventListener('change',async event=>{
+  const e=event.target;
+  if(e.id==='exchange-file'&&e.files?.[0]){try{if(e.files[0].size>2_000_000)throw Error('JSON too large');const value=await e.files[0].text();e.form.elements.namedItem('json').value=value;exchangeMode=e.form.dataset.kind;exchangeSource=value;exchangeDraft=null;$('#exchange-preview')?.remove();}catch(err){notify(err.message);}}
+  if(e.form?.id==='exchange-form'&&e.name==='plan'){exchangeDraft=null;$('#exchange-preview')?.remove();}
+});
+function statisticsAdjustment(s){const entries=Object.entries(s.entries).filter(([,e])=>e.statistics);if(!entries.length)return '';
+  return `<form id="statistics-adjust-form" class="card spaced"><h3>${tr('Statistikannahmen anpassen','Adjust statistical assumptions')}</h3><label>${tr('Standardabweichungsfaktor','Standard deviation factor')}<input name="factor" type="number" min="-10" max="10" step="any" value="${attrs(s.sigmaFactor??0)}" required></label>
+    ${entries.map(([key,e])=>`<label class="check-row"><input type="checkbox" name="modules" value="${attrs(key)}" checked>${escape(e.name)}</label>`).join('')}
+    <p class="hint">${tr('Setzt Annahmen der ausgewählten Module zurück; echte Ergebnisse bleiben geschützt. Ohne Standardabweichung bleibt eine σ-Annahme unbekannt.','Resets assumptions for selected courses; actual results stay protected. A sigma adjustment stays unknown when deviation is unavailable.')}</p><button type="submit" class="button">${tr('Ausgewählte Annahmen neu berechnen','Recalculate selected assumptions')}</button></form>`;
+}
+
+// Editing imported text invalidates its old preview, so Apply always uses reviewed JSON.
+addEventListener('input',event=>{const e=event.target;if(e.form?.id==='exchange-form'&&e.name==='json'){exchangeMode=e.form.dataset.kind;exchangeSource=e.value;exchangeDraft=null;$('#exchange-preview')?.remove();}});

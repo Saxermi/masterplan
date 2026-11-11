@@ -127,14 +127,16 @@
   }
 
   function moduleGrade(entry) {
+    if(entry?.formula){const F=typeof module!=='undefined'&&module.exports?require('./grade-formula.js'):root.MasterPlanFormula;const result=F.analyze(entry);return result.valid&&result.complete?result.value:null;}
     const parts=entry?.parts;
     if(!Array.isArray(parts)||!parts.length)return null;
     if(parts.some(p=>typeof p.value!=='number'||!Number.isFinite(p.value)||p.value<1||p.value>6||
       typeof p.weight!=='number'||!Number.isFinite(p.weight)||p.weight<=0))return null;
+    if(entry.bonusPlacement==='formula')return null;const ceiling=entry.gradeCeiling??6;if(typeof ceiling!=='number'||!Number.isFinite(ceiling)||ceiling<1||ceiling>6)return null;
     const weight=parts.reduce((s,p)=>s+p.weight,0);
     if(!Number.isFinite(weight))return null;
     const bonus=entry.bonus??0;if(typeof bonus!=='number'||!Number.isFinite(bonus)||Math.abs(bonus)>6)return null;
-    return Math.min(6,Math.max(1,parts.reduce((s,p)=>s+p.value*(p.weight/weight),0)+bonus));
+    return Math.min(ceiling,Math.max(1,parts.reduce((s,p)=>s+p.value*(p.weight/weight),0)+bonus));
   }
   function calculateFinalGrade(entries,rules={}) {
     const weights={core:rules.gradeWeights?.coreCourse??2,specialisation:rules.gradeWeights?.specialisationLecture??1,

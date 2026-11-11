@@ -237,9 +237,27 @@ def valid_course(course):
     return isinstance(events, list) and len(events) <= 100 and all(valid_event(e) for e in events)
 
 
+def valid_module_insights(value):
+    if not isinstance(value, dict) or len(value) > 1000:
+        return False
+    def preparation(p):
+        return (isinstance(p, dict) and (p.get('semester') is None or _term(p['semester'])) and _text(p.get('assessment'), 20000) and p.get('confidence') in ('low','medium','high','unknown')
+                and all(isinstance(p.get(k), list) and len(p[k]) <= 100 and all(_text(v, 2000) for v in p[k]) for k in ('prerequisites','gaps','recommendations')))
+    for key, entry in value.items():
+        if not _text(key, 300) or not isinstance(entry, dict) or not _text(entry.get('notes',''), 20000):
+            return False
+        if 'preparation' in entry and not preparation(entry['preparation']):
+            return False
+        if 'preparations' in entry and (not isinstance(entry['preparations'],dict) or len(entry['preparations']) > 100 or any(not preparation(p) for p in entry['preparations'].values())):
+            return False
+    return True
+
+
 def valid_state(x):
     """Validate storage shape; incomplete academic plans remain valid drafts."""
     if not isinstance(x, dict) or type(x.get('revision')) is not int or x['revision'] < 0 or x.get('schema') != 2:
+        return False
+    if not valid_module_insights(x.get('moduleInsights', {})):
         return False
     if _private_grade_keys(x) or x.get('language') not in ('de', 'en') or x.get('theme') not in ('light', 'dark'):
         return False
@@ -723,7 +741,7 @@ class Handler(BaseHTTPRequestHandler):
                                           "meetings": meetings, "source": source})
             except (RuntimeError, ValueError) as exc:
                 return self.respond(503, {"error": str(exc)})
-        if path == "/" or path in ("/index.html", "/app.js", "/study-rules.js", "/grade-model.js", "/styles.css", "/manifest.webmanifest", "/icon.svg"):
+        if path == "/" or path in ("/index.html", "/app.js", "/study-rules.js", "/grade-model.js", "/grade-formula.js", "/exchange.js", "/styles.css", "/manifest.webmanifest", "/icon.svg"):
             filename = "index.html" if path == "/" else path[1:]
             fp = WEB / filename
             if not fp.exists():

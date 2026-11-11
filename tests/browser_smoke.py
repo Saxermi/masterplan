@@ -23,7 +23,7 @@ def main():
         page=browser.new_page(viewport={'width':1400,'height':970})
         errors=[]
         page.on('pageerror',lambda err: errors.append(str(err)))
-        html=(ROOT/'web/index.html').read_text(encoding='utf-8').replace('<script type="module" src="/app.js"></script>','').replace('<link rel="stylesheet" href="/styles.css">','').replace('<script src="/study-rules.js"></script>','').replace('<script src="/grade-model.js"></script>','')
+        html=(ROOT/'web/index.html').read_text(encoding='utf-8').replace('<script type="module" src="/app.js"></script>','').replace('<link rel="stylesheet" href="/styles.css">','').replace('<script src="/study-rules.js"></script>','').replace('<script src="/grade-model.js"></script>','').replace('<script src="/grade-formula.js"></script>','').replace('<script src="/exchange.js"></script>','')
         page.set_content(html)
         page.add_style_tag(content=(ROOT/'web/styles.css').read_text(encoding='utf-8'))
         page.evaluate('''([state,rules])=>{
@@ -47,6 +47,8 @@ def main():
             return new Response(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
           }
         }''',[data,rules])
+        page.add_script_tag(content=(ROOT/'web/grade-formula.js').read_text(encoding='utf-8'))
+        page.add_script_tag(content=(ROOT/'web/exchange.js').read_text(encoding='utf-8'))
         page.add_script_tag(content=(ROOT/'web/study-rules.js').read_text(encoding='utf-8'))
         page.add_script_tag(content=(ROOT/'web/grade-model.js').read_text(encoding='utf-8'))
         page.add_script_tag(content=(ROOT/'web/app.js').read_text(encoding='utf-8'))

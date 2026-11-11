@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "kind": "masterplan-preparation",
+  "courses": [
+    {
+      "number": "401-0000-00L",
+      "title": "Course title",
+      "semester": "2026W",
+      "assessment": "Summary",
+      "confidence": "medium",
+      "prerequisites": [
+        "Required knowledge"
+      ],
+      "gaps": [
+        "Potential gap"
+      ],
+      "recommendations": [
+        "Preparation action"
+      ],
+      "source": {
+        "url": "Official VVZ URL",
+        "document": null,
+        "page": null
+      },
+      "notes": null
+    }
+  ]
+}

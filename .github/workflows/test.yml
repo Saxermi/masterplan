@@ -19,6 +19,8 @@ jobs:
           node --check web/app.js
           node --check web/study-rules.js
           node --check web/grade-model.js
+          node --check web/grade-formula.js
+          node --check web/exchange.js
       - name: Python unit and HTTP integration tests
         run: python -m unittest discover -s tests -v
       - name: Degree and grade allocation tests
@@ -43,3 +45,4 @@ jobs:
           python tests/browser_seminar.py
           python tests/browser_history_details.py
           python tests/browser_grades.py
+          python tests/browser_analytics.py

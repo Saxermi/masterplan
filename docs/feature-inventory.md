@@ -1,6 +1,6 @@
 # MasterPlan feature inventory
 
-Reviewed against the application and tests on 10 November 2026. “Implemented” describes the
+Reviewed against the application and tests on 11 November 2026. “Implemented” describes the
 local application on this branch; it does not imply official ETH academic recognition.
 
 | Area | Implemented | Partial or not implemented |
@@ -42,7 +42,7 @@ local application on this branch; it does not imply official ETH academic recogn
    course metadata, retry visibility and an approved conflict-resolution flow for cloud-synced files.
 5. **Grade-to-course reconciliation:** stable course references, recognition-aware final-grade selection,
    pass/fail achievements, imported official results and a reviewed final transcript preview.
-6. **Usability and distribution:** accessible form editors instead of prompts, a complete diagnostic
+6. **Usability and distribution:** remaining prompt-based secondary actions, a complete diagnostic
    translation catalogue, accessibility tests, packaging and a documented backup/restore workflow.
 
 Draft planning is intentionally permissive: an incomplete course mix can be saved and explored.
@@ -61,10 +61,31 @@ The limitations concerning personal academic recognition and full date/recurrenc
 A separate Study simulation navigation item now supports named, duplicable/deletable scenarios,
 study-plan selection, course-based hypothetical grades, and final-grade calculation. Real grades and
 scenario entries have form-based assessment/component editing, pending-grade assumptions, target
-exam calculations and additive bonuses. Actual-study simulations inherit identifiable actual marks
-and assessment weights, with read-only actual components. An unknown bonus can still be explored
+exam calculations and additive bonuses. Simulations inherit identifiable actual marks
+and assessment weights only when explicitly chosen, with read-only actual components. An unknown bonus can still be explored
 as an assumption. Everything persists in the encrypted vault rather than study-plan JSON.
 
 Still partial: official transcript import, authoritative assessment rules and rounding, automatic
 recognition, and grade matching for unlinked legacy names that differ from their course titles.
 The editor supports explicitly linking those records; ambiguous matches are never guessed.
+
+## JSON analytics and flexible formulas update
+
+Implemented: arithmetic `min`/`max` formulas shared by actual grades and simulations, configurable
+additive bonus placement/grade ceiling, conservative pending-result intervals and numerical target
+search; validated JSON statistics/scenario imports with preview, source data, explicit actual-grade
+inheritance, mean ± deviation scenarios and selected-module adjustments. Statistics remain encrypted.
+Bilingual prompts describe external PDF extraction; there is deliberately no PDF parser in the app.
+
+Course details now contain persistent personal notes and separate term-specific advisory preparation
+assessments. All-semester JSON/CSV exports link official VVZ entries; the preparation context adds
+available objectives/descriptions and opt-in notes. Calendar events have minute-accurate positions,
+duration and overlap lanes; repeated weekly meetings persist.
+
+Remaining gaps: automatic PDF ingestion, authoritative exam-rule/rounding import, inferred statistics
+for missing values, automatic preparation assessment generation inside the app, full recurrence/date
+exceptions, and official transcript/recognition integration. Formula target search is approximate;
+multiple pending assessments use a common hypothetical grade. Notes and advisory assessments are
+public plan data, distinct from the encrypted grade/statistics vault.
+
+See [the workflow](analytics-and-imports.md) for DE/EN prompts, JSON examples and screenshot reproduction.

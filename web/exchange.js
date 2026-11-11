@@ -1,0 +1,42 @@
+/* Strict JSON contracts for external statistics/preparation. Imports never execute code. */
+(function(root){
+  const text=(v,max=20000)=>typeof v==='string'&&v.length<=max;
+  const finite=v=>typeof v==='number'&&Number.isFinite(v);
+  const term=v=>v==null||typeof v==='string'&&/^\d{4}[SW]$/.test(v);
+  function validate(data){
+    if(!data||data.schemaVersion!==1||!['masterplan-statistics','masterplan-grade-scenario','masterplan-preparation'].includes(data.kind)||!Array.isArray(data.courses)||data.courses.length>1000)throw Error('Ungültiges JSON-Format · Invalid JSON format');
+    const seen=new Set();
+    for(const c of data.courses){
+      if(!c||typeof c!=='object'||Array.isArray(c)||c.number!=null&&!text(c.number,60)||c.title!=null&&!text(c.title,250)||(!text(c.number,60)||!c.number.trim())&&(!text(c.title,250)||!c.title.trim())||!term(c.semester))throw Error('Kurskennung/Semester fehlt oder ungültig · Invalid course identity/semester');
+      const key=(c.number?.replace(/\s+/g,'').toUpperCase()||c.title?.trim().toLowerCase())+'@'+(c.semester||'');if(seen.has(key))throw Error('Doppelter Kurseintrag · Duplicate course entry: '+key);seen.add(key);
+      if(data.kind==='masterplan-statistics'){
+        if(c.mean!=null&&(!finite(c.mean)||c.mean<1||c.mean>6)||c.stddev!=null&&(!finite(c.stddev)||c.stddev<0||c.stddev>5)||c.sampleSize!=null&&(!Number.isInteger(c.sampleSize)||c.sampleSize<1))throw Error('Ungültige Statistikwerte · Invalid statistics');
+      }else if(data.kind==='masterplan-grade-scenario'){
+        if(c.grade!=null&&(!finite(c.grade)||c.grade<1||c.grade>6))throw Error('Ungültige Szenarionote · Invalid scenario grade');
+      }else{
+        if(!text(c.assessment)||!['low','medium','high','unknown'].includes(c.confidence)||!['prerequisites','gaps','recommendations'].every(k=>Array.isArray(c[k])&&c[k].length<=100&&c[k].every(v=>text(v,2000))))throw Error('Ungültige Vorbereitungseinschätzung · Invalid preparation assessment');
+      }
+      if(c.source!=null&&(!c.source||typeof c.source!=='object'||Array.isArray(c.source)||Object.values(c.source).some(v=>v!=null&&!(typeof v==='number'&&finite(v))&&!text(v,2000))))throw Error('Ungültige Quellenangabe · Invalid source');
+      if(c.notes!=null&&!text(c.notes))throw Error('Ungültige Bemerkung · Invalid note');
+    }
+    if(data.name!=null&&!text(data.name,150))throw Error('Ungültiger Name · Invalid name');
+    return data;
+  }
+  function parse(source){if(typeof source!=='string'||source.length>2_000_000)throw Error('JSON zu groß · JSON too large');return validate(JSON.parse(source));}
+  function match(c,rows){
+    const number=String(c.number||'').replace(/\s+/g,'').toUpperCase(),title=String(c.title||'').trim().toLowerCase();
+    let candidates=rows.filter(r=>number&&String(r.number||'').replace(/\s+/g,'').toUpperCase()===number);
+    if(!candidates.length)candidates=rows.filter(r=>!r.number&&r.title?.trim().toLowerCase()===title);
+    const exact=candidates.filter(r=>r.semester===c.semester);if(exact.length===1)return exact[0];return candidates.length===1?candidates[0]:null;
+  }
+  function statisticalGrade(row,factor){if(!finite(factor)||Math.abs(factor)>10)throw Error('Ungültiger Faktor · Invalid factor');if(row.mean==null||factor!==0&&row.stddev==null)return null;return Math.min(6,Math.max(1,row.mean+factor*(row.stddev||0)));}
+  function officialUrl(c){const source=c.sourceSemester||c.semester;if(c.unitId)return `https://www.vvz.ethz.ch/Vorlesungsverzeichnis/lerneinheit.view?lerneinheitId=${encodeURIComponent(c.unitId)}&semkez=${encodeURIComponent(source)}&lang=en`;return `https://www.vvz.ethz.ch/Vorlesungsverzeichnis/sucheLehrangebot.view?lerneinheitscode=${encodeURIComponent(c.number||'')}&semkez=${encodeURIComponent(c.semester)}&lang=en`;}
+  function planExport(plan,courses){return {schemaVersion:1,kind:'masterplan-study-plan',plan:{id:plan.id,name:plan.name},courses:[...courses].sort((a,b)=>a.semester.localeCompare(b.semester)||String(a.title||'').localeCompare(String(b.title||''))).map(c=>({id:c.id,number:c.number||'',title:c.title,semester:c.semester,ects:c.ects,category:c.role,subtype:c.subtype||null,status:c.status,sourceSemester:c.sourceSemester||null,historical:!!c.sourceSemester&&c.sourceSemester!==c.semester,vvzUrl:officialUrl(c)}))};}
+  function csv(data){const columns=['semester','number','title','ects','category','subtype','status','sourceSemester','vvzUrl'];const cell=v=>'"'+String(v??'').replace(/"/g,'""').replace(/^[\s]*[=+@-]/,"'$&")+'"';return [columns,...data.courses.map(c=>columns.map(k=>c[k]))].map(row=>row.map(cell).join(',')).join('\r\n');}
+  function prompt(kind,lang){
+    const stat={schemaVersion:1,kind:'masterplan-statistics',name:'Exam statistics',courses:[{number:'401-0000-00L',title:'Course title',semester:'2026W',mean:4.5,sampleSize:120,stddev:.7,source:{document:'Document name',page:3,url:null},notes:null}]};
+    const prep={schemaVersion:1,kind:'masterplan-preparation',courses:[{number:'401-0000-00L',title:'Course title',semester:'2026W',assessment:'Summary',confidence:'medium',prerequisites:['Required knowledge'],gaps:['Potential gap'],recommendations:['Preparation action'],source:{url:'Official VVZ URL',document:null,page:null},notes:null}]};
+    const de=lang==='de';return (kind==='statistics'?(de?'Lies das beigefügte PDF mit Prüfungsstatistiken. Extrahiere für jedes Modul Kursnummer, Titel, Prüfungssemester, Durchschnittsnote, Anzahl bewerteter Studierender und Standardabweichung. Unterscheide Teilnehmerzahl von bestandenen Prüfungen. Fehlende oder unlesbare Werte sind null; nichts schätzen, keine Standardabweichung aus dem Durchschnitt ableiten. Quellen mit Dokument und Seite erhalten, unterschiedliche Prüfungssemester als getrennte Einträge führen. semester ist YYYY[S/W], z. B. 2026S für FS 2026 oder 2026W für HS 2026; wenn die Zuordnung zum Vorlesungssemester unklar ist, null. Titel nicht in Kursnummern umdeuten. Notenskala 1–6, Standardabweichung nicht mit Standardfehler verwechseln. Gib ausschließlich valides JSON nach diesem Beispiel aus:':'Read the attached PDF of exam statistics. Extract course number, title, examination semester, mean grade, number of graded students and standard deviation for each course. Distinguish student counts from passed exams. Use null for absent/illegible values; never invent values or infer deviation from the mean. Preserve document/page provenance and separate examination terms. semester uses YYYY[S/W], e.g. 2026S for spring or 2026W for autumn; use null if the lecture-term mapping is unclear. Never invent a course number from a title. Grades use the 1–6 scale; do not confuse standard error and standard deviation. Return only valid JSON following this example:'):(de?'Analysiere den angehängten MasterPlan-Studienplan chronologisch. Beurteile anhand der offiziellen VVZ-Links und beigefügten Kursinformationen, ob die vorherigen Semester die Voraussetzungen für jedes Modul abdecken. Geplant bedeutet nicht bestanden; keine Noten oder Fähigkeiten erfinden. Persönliche Notizen sind Aussagen des Studierenden, keine Belege. Quellen, Wissenslücken, konkrete Vorbereitungsvorschläge und Unsicherheit nennen. Trenne eine unverbindliche Einschätzung von offiziellen Zulassungsbedingungen. Wenn Quellen nicht zugänglich sind, kennzeichne dies. confidence ist low, medium, high oder unknown. Gib ausschließlich JSON zurück:':'Review the attached MasterPlan study plan chronologically. Use official VVZ links and supplied course information to assess whether preceding semesters cover each course prerequisite. Planned does not mean passed; never invent grades or abilities. Personal notes are student statements, not evidence. Include sources, knowledge gaps, actionable preparation and uncertainty. Separate an advisory assessment from official admission requirements. Explicitly mark unavailable sources. confidence must be low, medium, high or unknown. Return only JSON:'))+'\n'+JSON.stringify(kind==='statistics'?stat:prep,null,2);
+  }
+  const api={validate,parse,match,statisticalGrade,planExport,csv,prompt,officialUrl};root.MasterPlanExchange=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+})(globalThis);
