@@ -101,3 +101,16 @@ The main timetable now supports time-first pointer/touch range selection with 15
 an accessible module/time/location picker, cancellation and repeated meetings. Keyboard activation
 opens the same picker. Source choices and selections remain scoped to their dataset, course and term;
 calendar choices are restricted to unlocked modules of the selected study plan and semester.
+
+## Simulation defaults and save workflow
+
+Sigma changes now preserve local/manual assumptions, unmatched modules and existing values when
+required statistics are missing. Scenario-wide fallback grades and per-course overrides have clear
+precedence beneath inherited actual results. A compact searchable/filterable table identifies each
+grade source and allows resetting an override to the default. Component/formula editing remains.
+
+A visible Save scenarios toolbar tracks unsaved/saving/saved state and persists all named scenarios,
+fallbacks, overrides and the selected scenario in the encrypted vault. Valid pending assumption edits
+are included. Existing vaults remain compatible. Regression coverage includes sparse imports, manual
+missing-mean grades, partial actual results, selected-only sigma, zero placeholders, encrypted reload,
+multiple scenarios, source filters, pending edits and bilingual controls.

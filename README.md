@@ -279,3 +279,10 @@ also capture the overall module pass percentage (0–100; unknown `null`). In th
 a day to mark a time range, then select a semester module and save in the picker. Touch and keyboard
 entry are supported. See the [workflow update](docs/analytics-and-imports.md) and
 [review screenshots](docs/screenshots/conflicts-calendar.md).
+
+Simulation sigma adjustments preserve manual grades and unmatched modules. Set a global fallback
+for missing imported grades, override individual courses inline, or return a course to its default.
+Source badges, search and missing-assumption filters explain each value. **Save scenarios** stores
+named scenarios, fallbacks, overrides and the selected scenario in the encrypted vault, including
+valid pending assumption edits. See the [simulation workflow](docs/analytics-and-imports.md) and
+[review screenshots](docs/screenshots/simulation-defaults.md).
