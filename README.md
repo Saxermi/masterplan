@@ -35,7 +35,7 @@ The default bind address is **`127.0.0.2:8765`** (as requested). If this loopbac
 - Complete event reconciliation and automatic updates of previously chosen personal slots remain conservative: VVZ schedule changes are flagged, but never silently overwrite selected or manual slots. Some by-appointment or date-specific events have no weekly slot and must be handled manually.
 - Cloud merge/conflict resolution between two simultaneous editing devices. **Do not edit the same cloud-synced folder from two computers at once**; sync fully before switching.
 - Cloud-hosted deployment, automatic desktop installers, production accounts and hosted multi-user security. This server is **local loopback only**.
-- Scheduled live-upstream contract tests, a broad browser/OS matrix, accessibility auditing and continuous release/distribution. Allocation, storage, HTTP and synthetic browser regressions run in CI.
+- Scheduled live-upstream contract tests, a broad browser/OS matrix, accessibility auditing and continuous release/distribution. Allocation, storage, HTTP and synthetic browser regressions are run locally. GitHub Actions is disabled by default; hosted tests require an explicit user request.
 
 
 ## Feedback revision (November 2026) / Überarbeitung
@@ -286,3 +286,8 @@ Source badges, search and missing-assumption filters explain each value. **Save 
 named scenarios, fallbacks, overrides and the selected scenario in the encrypted vault, including
 valid pending assumption edits. See the [simulation workflow](docs/analytics-and-imports.md) and
 [review screenshots](docs/screenshots/simulation-defaults.md).
+
+Pass/fail modules now have outcomes instead of numeric grades. Individual course sigma choices are
+saved independently of the global factor. Study-plan JSON supports safe single/bundle imports and
+roundtrips semester allocations, assessment modes and meetings. See the
+[student walkthrough, fixed issues and three spreadsheet-derived import scenarios](docs/student-walkthrough.md).

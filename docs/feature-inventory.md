@@ -27,7 +27,7 @@ local application on this branch; it does not imply official ETH academic recogn
 | Input integrity | Structured API/import checks for credits, status, roles, IDs, semesters, history, events and shortlist metadata; invalid input leaves stored data unchanged | Imported academic classifications are still user assertions |
 | Interface | English/German, light/dark, responsive layout, PWA manifest | No complete translation of generated diagnostic text; no offline service worker or installable desktop package |
 | Guidelines | Editable JSON/schema, rule provenance, configured counts/credits/exclusions/grade weights | No validated PDF extraction agent, personal applicability engine or legally binding degree audit; `sourceChecked` remains false |
-| Tests | Python unit/HTTP integration suite; dependency-free JavaScript allocation/grade suite; browser smoke and invalid-allocation tests in CI; optional real-dump HS26 test | No scheduled live upstream contract monitoring, broad browser/OS matrix or full accessibility audit |
+| Tests | Python unit/HTTP integration suite; dependency-free JavaScript allocation/grade suite; local browser smoke and invalid-allocation tests; optional real-dump HS26 test | No scheduled live upstream contract monitoring, broad browser/OS matrix or full accessibility audit |
 
 ## Priority gaps
 
@@ -114,3 +114,16 @@ fallbacks, overrides and the selected scenario in the encrypted vault. Valid pen
 are included. Existing vaults remain compatible. Regression coverage includes sparse imports, manual
 missing-mean grades, partial actual results, selected-only sigma, zero placeholders, encrypted reload,
 multiple scenarios, source filters, pending edits and bilingual controls.
+
+## Pass/fail, per-course sigma and portable study plans
+
+Course and grade editors distinguish numeric from pass/fail assessment. P/F outcomes are separate
+from numerical averages, retain credits/category checks, and have dedicated pending-outcome filters.
+Actual outcomes remain protected; assumed outcomes and pending edits persist in the encrypted vault.
+Individual sigma choices are pinned per course, can return to global settings individually or in bulk,
+and preserve local grade overrides. Missing means/deviations never become fabricated statistics.
+
+Single/bundle study-plan imports create new plans with fresh IDs and retain actual studies/history.
+Portable exports preserve semesters, locks, assessment mode, meetings and source/recognition metadata.
+See the [ODS walkthrough and issue report](student-walkthrough.md) for the three importable plans,
+explicit scheduling assumptions and the distinction between hypothetical grades and observed statistics.

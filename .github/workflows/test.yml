@@ -1,7 +1,8 @@
 name: Test MasterPlan
+# Opt-in only: do not run on pushes or pull requests.
+# Run GitHub-hosted tests only when the user explicitly requests them.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
