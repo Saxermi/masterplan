@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "masterplan-statistics",
+  "name": "Exam statistics",
+  "courses": [
+    {
+      "number": "401-0000-00L",
+      "title": "Course title",
+      "semester": "2026W",
+      "mean": 4.5,
+      "sampleSize": 120,
+      "stddev": 0.7,
+      "source": {
+        "document": "Document name",
+        "page": 3,
+        "url": null
+      },
+      "notes": null
+    }
+  ]
+}

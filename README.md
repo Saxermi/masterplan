@@ -257,3 +257,18 @@ Anrechnungskategorie und Status statt Browser-Eingabefenstern. Titel, ECTS, Spez
 und Bachelor-Verwendung können dort gemeinsam bearbeitet werden. Die Quellen-/Sperrprüfungen
 bleiben bestehen. / Course editing now uses a form with semester, category and status dropdowns
 instead of native browser prompts. Pending manual timetable input survives background schedule refreshes.
+
+### Flexible Formeln, JSON-Statistiken und Modulnotizen / Formulas, statistics and notes
+
+Noten und Simulationen unterstützen eigene `min`/`max`-Formeln mit mehreren Zwischenprüfungen,
+Bonusplatzierung und einstellbarer Maximalnote. JSON-Statistiken mit Mittelwert, Standardabweichung,
+Studierendenzahl und Quelle erzeugen anpassbare Szenarien. Echte Noten werden nur nach ausdrücklicher
+Auswahl übernommen. Moduldetails enthalten persönliche Notizen und importierbare
+Vorbereitungseinschätzungen. Studienpläne lassen sich semesterübergreifend mit VVZ-Links exportieren.
+
+Custom formulas, JSON statistics/sigma scenarios, course notes and preparation assessments are
+available in both languages. See the [workflow and JSON examples](docs/analytics-and-imports.md),
+[PDF extraction prompts DE/EN](docs/prompts-statistics.md) and
+[preparation prompts DE/EN](docs/prompts-preparation.md). The timetable now shows event duration,
+quarter-hour starts and overlapping meetings accurately. `python tests/browser_analytics.py`
+checks these flows with synthetic data.

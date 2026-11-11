@@ -27,7 +27,7 @@ def main():
                 page.locator('#grade-entry-form button[type="submit"]').click();page.locator('[data-action="grade-save"]').click();page.wait_for_function("()=>document.querySelector('#toast').textContent.includes('encrypted and saved')")
                 encrypted=Path(d,'grades.enc').read_text();assert 'PRIVATE-MIDTERM-XYZ' not in encrypted;assert 'entries' not in encrypted
                 raw=Path(d,'masterplan.json').read_text();assert 'PRIVATE-MIDTERM-XYZ' not in raw and 'simulations' not in raw
-                page.locator('[data-nav="simulation"]').click();page.locator('#simulation-create-form [name="name"]').fill('Optimistic');page.locator('#simulation-create-form button').click();page.wait_for_selector('#simulation-plan')
+                page.locator('[data-nav="simulation"]').click();page.locator('#simulation-create-form [name="name"]').fill('Optimistic');page.locator('#simulation-create-form [name="useActual"]').select_option('yes');page.locator('#simulation-create-form button').click();page.wait_for_selector('#simulation-plan')
                 assert page.locator('#simulation-plan').input_value()=='actual';assert 'Actual results inherited' in page.locator('#app').inner_text()
                 key='number:'+s['actualPlan']['courses'][0]['number']
                 page.locator(f'[data-action="simulation-edit"][data-key="{key}"]').click()

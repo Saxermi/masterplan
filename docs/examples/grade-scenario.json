@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "masterplan-grade-scenario",
+  "name": "Illustrative assumptions — synthetic",
+  "courses": [
+    {
+      "number": "401-0000-00L",
+      "title": "Example course",
+      "semester": "2026W",
+      "grade": 4.5
+    }
+  ]
+}
