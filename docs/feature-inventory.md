@@ -114,3 +114,16 @@ fallbacks, overrides and the selected scenario in the encrypted vault. Valid pen
 are included. Existing vaults remain compatible. Regression coverage includes sparse imports, manual
 missing-mean grades, partial actual results, selected-only sigma, zero placeholders, encrypted reload,
 multiple scenarios, source filters, pending edits and bilingual controls.
+
+## Pass/fail, per-course sigma and portable study plans
+
+Course and grade editors distinguish numeric from pass/fail assessment. P/F outcomes are separate
+from numerical averages, retain credits/category checks, and have dedicated pending-outcome filters.
+Actual outcomes remain protected; assumed outcomes and pending edits persist in the encrypted vault.
+Individual sigma choices are pinned per course, can return to global settings individually or in bulk,
+and preserve local grade overrides. Missing means/deviations never become fabricated statistics.
+
+Single/bundle study-plan imports create new plans with fresh IDs and retain actual studies/history.
+Portable exports preserve semesters, locks, assessment mode, meetings and source/recognition metadata.
+See the [ODS walkthrough and issue report](student-walkthrough.md) for the three importable plans,
+explicit scheduling assumptions and the distinction between hypothetical grades and observed statistics.

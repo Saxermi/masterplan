@@ -225,6 +225,8 @@ def valid_course(course):
         return False
     if any(k in course and type(course[k]) is not bool for k in ('locked', 'proxy', 'reviewAvailable', 'usedForBSc')):
         return False
+    if course.get('gradingMode') not in (None,'numeric','pass-fail'):
+        return False
     if course.get('creditApproved') is not None and type(course['creditApproved']) is not bool:
         return False
     if course.get('subtype') not in (None, 'lecture', 'seminar') or not _text(course.get('specialisation', ''), 150):

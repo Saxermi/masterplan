@@ -286,3 +286,8 @@ Source badges, search and missing-assumption filters explain each value. **Save 
 named scenarios, fallbacks, overrides and the selected scenario in the encrypted vault, including
 valid pending assumption edits. See the [simulation workflow](docs/analytics-and-imports.md) and
 [review screenshots](docs/screenshots/simulation-defaults.md).
+
+Pass/fail modules now have outcomes instead of numeric grades. Individual course sigma choices are
+saved independently of the global factor. Study-plan JSON supports safe single/bundle imports and
+roundtrips semester allocations, assessment modes and meetings. See the
+[student walkthrough, fixed issues and three spreadsheet-derived import scenarios](docs/student-walkthrough.md).

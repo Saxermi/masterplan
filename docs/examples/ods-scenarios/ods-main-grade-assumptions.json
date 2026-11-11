@@ -1,0 +1,249 @@
+{
+  "schemaVersion": 1,
+  "kind": "masterplan-grade-scenario",
+  "name": "ODS 1 — Main plan — illustrative grades",
+  "courses": [
+    {
+      "number": "401-0647-00L",
+      "title": "Introduction to Mathematical Optimization",
+      "semester": "2026W",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "252-0232-00L",
+      "title": "Software Engineering",
+      "semester": "2026W",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "401-2673-00L",
+      "title": "Numerical Methods for CSE",
+      "semester": "2026W",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "401-4656-21L",
+      "title": "AI in the Sciences and Engineering",
+      "semester": "2026W",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "401-0674-00L",
+      "title": "Numerical Methods for Partial Differential Equations",
+      "semester": "2027S",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "401-3670-00L",
+      "title": "High-Performance Computing Lab for CSE",
+      "semester": "2027S",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "529-0483-00L",
+      "title": "Statistical Physics and Computer Simulation",
+      "semester": "2027S",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "851-0077-00L",
+      "title": "Philosophy of War",
+      "semester": "2027S",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "402-0809-00L",
+      "title": "Introduction to Computational Physics",
+      "semester": "2027W",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "402-0205-00L",
+      "title": "Quantum Mechanics I",
+      "semester": "2027W",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "402-0830-00L",
+      "title": "General Relativity",
+      "semester": "2027W",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "401-3667-75L",
+      "title": "Case Studies Seminar (Autumn Semester 2025)",
+      "semester": "2027W",
+      "gradingMode": "pass-fail",
+      "grade": null,
+      "outcome": "pass",
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "402-0810-00L",
+      "title": "Computational Quantum Physics",
+      "semester": "2028S",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "402-0812-00L",
+      "title": "Computational Statistical Physics",
+      "semester": "2028S",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "401-3632-00L",
+      "title": "Computational Statistics",
+      "semester": "2028S",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "401-5810-00L",
+      "title": "Seminar in Physics for CSE",
+      "semester": "2028S",
+      "gradingMode": "pass-fail",
+      "grade": null,
+      "outcome": "pass",
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "402-2000-00L",
+      "title": "Scientific Works in Physics",
+      "semester": "2028S",
+      "gradingMode": "pass-fail",
+      "grade": null,
+      "outcome": "pass",
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "401-3667-75L",
+      "title": "Case Studies Seminar (Autumn Semester 2025)",
+      "semester": "2028W",
+      "gradingMode": "pass-fail",
+      "grade": null,
+      "outcome": "pass",
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "401-3740-01L",
+      "title": "Semester Paper",
+      "semester": "2028W",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "401-7855-00L",
+      "title": "Computational Astrophysics (University of Zurich)",
+      "semester": "2028W",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "401-7851-00L",
+      "title": "Theoretical Astrophysics (University of Zurich)",
+      "semester": "2028W",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    },
+    {
+      "number": "401-4990-01L",
+      "title": "Master's Thesis",
+      "semester": "2029S",
+      "gradingMode": "numeric",
+      "grade": 5,
+      "outcome": null,
+      "source": {
+        "document": "Illustrative planning assumptions — not actual grades or exam statistics"
+      }
+    }
+  ]
+}

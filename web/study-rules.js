@@ -126,7 +126,9 @@
     return {rows,issues,admission,plannedValid,completedValid,courses,credited:unique};
   }
 
+  function gradingMode(c){c=c||{};return c.gradingMode||(Array.isArray(c.parts)&&c.parts.some(p=>typeof p.value==='number'||typeof p.estimate==='number')?'numeric':null)||(['case','scientific'].includes(c.role||c.category)||(c.role||c.category)==='specialisation'&&specialisationSubtype(c)==='seminar'?'pass-fail':'numeric');}
   function moduleGrade(entry) {
+    if(gradingMode(entry)==='pass-fail')return null;
     if(entry?.formula){const F=typeof module!=='undefined'&&module.exports?require('./grade-formula.js'):root.MasterPlanFormula;const result=F.analyze(entry);return result.valid&&result.complete?result.value:null;}
     const parts=entry?.parts;
     if(!Array.isArray(parts)||!parts.length)return null;
@@ -143,7 +145,7 @@
       elective:rules.gradeWeights?.elective??1,thesis:rules.gradeWeights?.masterThesis??4};
     const relevant=(Array.isArray(entries)?entries:[]).filter(e=>e&&typeof e==='object'&&e.countsForFinal!==false&&Object.hasOwn(weights,e.category)&&!(e.category==='specialisation'&&e.subtype==='seminar'));
     const counts=Object.fromEntries(Object.keys(weights).map(k=>[k,relevant.filter(e=>e.category===k).length]));
-    const invalid=relevant.some(e=>moduleGrade(e)===null||moduleGrade(e)<4||e.usedForBSc===true);
+    const invalid=relevant.some(e=>(gradingMode(e)==='pass-fail'?e.outcome!=='pass':moduleGrade(e)===null||moduleGrade(e)<4)||e.usedForBSc===true);
     const seen=new Set();let duplicate=false;
     for(const e of relevant){const key=number(e)||e.courseId||String(e.name||'').trim().replace(/\s+/g,' ').toLowerCase();if(key){if(seen.has(key))duplicate=true;seen.add(key);}}
     const coreNumbers=relevant.filter(e=>e.category==='core').map(number);
@@ -151,7 +153,7 @@
     const config=rules.gradeFormula||{};
     const complete=!invalid&&!duplicate&&!conflict&&counts.core===(config.coreCourseCount??2)&&counts.specialisation===(config.specialisationLectureCount??4)&&
       counts.elective>=(config.electiveMinimumCount??2)&&counts.thesis===(config.masterThesisCount??1);
-    const valid=relevant.filter(e=>moduleGrade(e)!==null);
+    const valid=relevant.filter(e=>gradingMode(e)!=='pass-fail'&&moduleGrade(e)!==null);
     const denominator=valid.reduce((s,e)=>s+weights[e.category],0);
     const value=denominator?valid.reduce((s,e)=>s+moduleGrade(e)*weights[e.category],0)/denominator:null;
     return {counts,complete,denominator,value:complete?value:null,invalid,duplicate,conflict};
@@ -204,7 +206,7 @@
     if(!to.semesters.includes(term)){to.semesters.push(term);to.semesters.sort();}
     to.courses.push(record);
   }
-  const api={specialisationSubtype,allocationRole,allocationCategory,matchesInterest,availableShortlist,resolveOffering,confirmedOffering,assignShortlist,moveAllocation,credited,allCourses,uniqueCredits,audit,moduleGrade,calculateFinalGrade};
+  const api={gradingMode,specialisationSubtype,allocationRole,allocationCategory,matchesInterest,availableShortlist,resolveOffering,confirmedOffering,assignShortlist,moveAllocation,credited,allCourses,uniqueCredits,audit,moduleGrade,calculateFinalGrade};
   root.MasterPlanRules=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(globalThis);
