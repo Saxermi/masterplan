@@ -133,7 +133,8 @@
       typeof p.weight!=='number'||!Number.isFinite(p.weight)||p.weight<=0))return null;
     const weight=parts.reduce((s,p)=>s+p.weight,0);
     if(!Number.isFinite(weight))return null;
-    return parts.reduce((s,p)=>s+p.value*(p.weight/weight),0);
+    const bonus=entry.bonus??0;if(typeof bonus!=='number'||!Number.isFinite(bonus)||Math.abs(bonus)>6)return null;
+    return Math.min(6,Math.max(1,parts.reduce((s,p)=>s+p.value*(p.weight/weight),0)+bonus));
   }
   function calculateFinalGrade(entries,rules={}) {
     const weights={core:rules.gradeWeights?.coreCourse??2,specialisation:rules.gradeWeights?.specialisationLecture??1,
@@ -163,12 +164,15 @@
     const assigned=allCourses(plan,state.history||[]);
     return state.interests.filter(i=>!assigned.some(c=>matchesInterest(c,i)));
   }
-  function confirmedOffering(c,term){
-    if(c.offerings?.[term])return c.offerings[term];
-    if(c.unitId&&c.sourceSemester===term)return c.unitId;
-    if(c.unitId||Object.keys(c.offerings||{}).length)throw Error('Kein bestätigtes Angebot im Zielsemester / No confirmed offering in target semester.');
-    return null;
+  function resolveOffering(c,term){
+    const known={...(c.offerings||{})};if(c.unitId&&c.sourceSemester&&!known[c.sourceSemester])known[c.sourceSemester]=c.unitId;
+    if(known[term])return {unitId:known[term],sourceSemester:term,proxy:false,seasonMismatch:false};
+    const terms=Object.keys(known).filter(t=>/^\d{4}[SW]$/.test(t)).sort();
+    const previous=terms.filter(t=>t<term),same=previous.filter(t=>t.endsWith(term.slice(-1)));
+    const source=same.at(-1)||previous.at(-1)||terms.find(t=>t.endsWith(term.slice(-1)))||terms[0];
+    return {unitId:source?known[source]:c.unitId||null,sourceSemester:source||c.sourceSemester||null,proxy:!!(source||c.unitId),seasonMismatch:!!source&&source.slice(-1)!==term.slice(-1)};
   }
+  function confirmedOffering(c,term){return resolveOffering(c,term).unitId;}
   function assignShortlist(state,planId,term,ids,role,idFactory){
     const plan=[state.actualPlan,...state.plans].find(p=>p.id===planId);
     if(!plan||!/^\d{4}[SW]$/.test(term)||!ids.length||new Set(ids).size!==ids.length)throw Error('Bitte Module und Zielsemester auswählen / Select modules and target semester.');
@@ -177,10 +181,10 @@
     const records=ids.map(key=>{
       const i=available.find(i=>i.id===key);
       if(!i)throw Error('Modul bereits zugewiesen oder nicht verfügbar / Module already assigned or unavailable.');
-      const unit=confirmedOffering(i,term),chosen=role==='suggested'?(i.suggestedRole||'elective'):role,category=allocationCategory(role==='suggested'&&chosen==='specialisation'&&specialisationSubtype(i)==='seminar'?seminarRole:chosen);
+      const offering=resolveOffering(i,term),chosen=role==='suggested'?(i.suggestedRole||'elective'):role,category=allocationCategory(role==='suggested'&&chosen==='specialisation'&&specialisationSubtype(i)==='seminar'?seminarRole:chosen);
       if(!roles.includes(category.role))throw Error('Ungültige Kategorie / Invalid category.');
       return {id:idFactory(),interestId:i.id,number:i.number||'',title:i.title,ects:i.ects||0,semester:term,...category,specialisation:category.role==='specialisation'?(i.specialisation||plan.specialisation||undefined):undefined,status:'planned',
-        unitId:unit,sourceSemester:unit?term:null,offerings:i.offerings||{},proxy:false,events:[],locked:false,reviewAvailable:!!i.reviewAvailable,creditApproved:category.role==='extra'?false:null};
+        ...offering,offerings:i.offerings||{},events:[],locked:false,reviewAvailable:!!i.reviewAvailable,creditApproved:category.role==='extra'?false:null};
     });
     if(records.some((c,index)=>records.slice(0,index).some(other=>matchesInterest(other,{...c,id:c.interestId}))))throw Error('Doppelte Module in Auswahl / Duplicate modules in selection.');
     if(!plan.semesters.includes(term)){plan.semesters.push(term);plan.semesters.sort();}
@@ -190,15 +194,15 @@
     const plans=[state.actualPlan,...state.plans],from=plans.find(p=>p.id===fromId),to=plans.find(p=>p.id===toId),c=from?.courses.find(c=>c.id===courseId);
     if(!c||!to||!/^\d{4}[SW]$/.test(term))throw Error('Ungültiges Ziel / Invalid target.');
     if(c.locked||from.lockedSemesters.includes(c.semester)||to.lockedSemesters.includes(term))throw Error('Kurs oder Semester ist gesperrt / Course or semester is locked.');
-    const unit=confirmedOffering(c,term);
+    const offering=resolveOffering(c,term);
     if(to.courses.some(x=>!(from===to&&x.id===c.id)&&matchesInterest(x,{...c,id:c.interestId||c.id})))throw Error('Modul im Zielplan bereits zugewiesen / Module already assigned in target plan.');
     if(role&&!roles.includes(allocationCategory(role).role))throw Error('Ungültige Kategorie / Invalid category.');
-    const record={...c,...(role?allocationCategory(role):{}),semester:term,events:term===c.semester?c.events:[],unitId:unit,sourceSemester:unit?term:null,proxy:false};
+    const record={...c,...(role?allocationCategory(role):{}),semester:term,events:term===c.semester?c.events:[],...offering};
     from.courses=from.courses.filter(x=>x.id!==c.id);
     if(!to.semesters.includes(term)){to.semesters.push(term);to.semesters.sort();}
     to.courses.push(record);
   }
-  const api={specialisationSubtype,allocationRole,allocationCategory,matchesInterest,availableShortlist,confirmedOffering,assignShortlist,moveAllocation,credited,allCourses,uniqueCredits,audit,moduleGrade,calculateFinalGrade};
+  const api={specialisationSubtype,allocationRole,allocationCategory,matchesInterest,availableShortlist,resolveOffering,confirmedOffering,assignShortlist,moveAllocation,credited,allCourses,uniqueCredits,audit,moduleGrade,calculateFinalGrade};
   root.MasterPlanRules=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(globalThis);

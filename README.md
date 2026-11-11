@@ -25,7 +25,7 @@ The default bind address is **`127.0.0.2:8765`** (as requested). If this loopbac
 - Local course records, manual events with building/floor/room, time clash detection and shared completed-course history.
 - Course/semester locks, interest-only courses (always **0 credited ECTS**), preliminary credit categories.
 - **Offline-first VVZ dump**: one complete SQLite database snapshot (ZIP) is downloaded on first start, stored under a gitignored cache directory, and reused across restarts for course search, details, exercise groups and timetable slots. Same-season historical proxies and all existing programme/category filters remain available. Upstream calls are globally limited to **one request per minute**.
-- Separate grade page with a password-encrypted `grades.enc` (AES-GCM via browser WebCrypto; PBKDF2 250,000 iterations), component-weighted estimates. No grades outside that page.
+- Separate grade page with a password-encrypted `grades.enc` (AES-GCM via browser WebCrypto; PBKDF2 250,000 iterations), component-weighted estimates. Grades appear only in the protected Grades and Study simulation views.
 - Minimal local JSON, atomic revisions, independent encrypted grade storage, JSON plan export/import, portable data folder (can be inside a cloud-sync folder). Open/move folders through Settings.
 - Configurable guideline JSON + schema for a future external extraction agent. Includes starter study-progress indicators, not full curriculum adjudication.
 
@@ -162,15 +162,13 @@ The screenshot uses mocked, non-personal data. The UI reports whether the local 
 
 The catalogue defaults to a concrete semester. Its recent choices span the previous two, current
 and next two semesters; an optional second concrete semester allows browsing autumn and spring
-together. Catalogue results and new linked allocations require exact confirmed offerings; historic
-proxies are no longer generated for new selections. Existing proxy records are preserved and labeled
-as historical references. Manual modules remain freely schedulable.
+together. Catalogue results and allocations prefer confirmed offerings and otherwise allow labelled historical references. Source unit IDs and source semesters are retained. Manual modules remain freely schedulable.
 
 Semester columns include removal with lock checks and confirmation for populated semesters;
 shortlist entries and completed history are retained. The timetable includes an inline assignment
 form and a manual-time form with a direct VVZ link for the selected module. Course cards provide
 “Change allocation” to adjust the target plan, semester and credit category. Changing semester clears
-selected events; locks and duplicates are checked. Empty scenarios now open correctly.
+selected events; locks and duplicates are checked. Historical and cross-season references are allowed with separate warnings. Empty scenarios now open correctly.
 
 Science in Perspective uses the shared catalogue section; Scientific Works in Mathematics/Physics
 are found by their official module numbers. Eligible MSc core electives display the matching Master
@@ -204,3 +202,58 @@ and the allocation editor. It remains part of specialisation credits while count
 its four lectures. Seminar grades are excluded from the final-grade formula. Existing seminar
 records remain compatible. Missing subtype metadata can use “Seminar” in the title as a hint;
 an explicit lecture classification takes precedence. Academic field recognition remains provisional.
+
+### Kursdetails, historische Angebote und Zeitzellen / Course details, references and time cells
+
+Modultitel sind anklickbar. Beschreibung, Lernziele, Inhalte und Literatur kommen aus dem lokalen
+VVZ-Dump bzw. dem vorhandenen Unit-Endpunkt. Die Ansicht nutzt die gewählte Sprache und fällt
+bei fehlender Übersetzung auf den vorhandenen Text zurück. Fehlende Daten sind explizit markiert;
+Kurstexte werden als Text dargestellt, nicht als ausführbares HTML. Die Abfrage erfolgt erst beim
+Öffnen und wird pro Unit-ID im Browser zwischengespeichert; die persönliche Plandatei bleibt klein.
+
+Historical course references may be assigned, moved and saved. The actual source unit/semester
+is preserved. Missing exact-term offerings show a historical-reference warning; a spring/autumn
+mismatch shows a second warning. Known same-season history is preferred. These warnings do not
+invalidate a degree plan, and existing course/semester locks still apply.
+
+Im Stundenplan werden die zugewiesenen Module des Zielsemesters angezeigt. Modul auswählen und
+eine Zeitzelle anklicken oder das Modul in eine Zeitzelle ziehen: Das Formular wird vorausgefüllt.
+Beginn/Ende prüfen und speichern; weitere Termine desselben Moduls werden hinzugefügt, nicht ersetzt.
+The target-semester module palette and time-cell click/drop flow support multiple meetings per
+module. Existing selected meetings reset when changing the course allocation's semester.
+
+Regression: `python3 tests/browser_history_details.py` uses synthetic public-shaped metadata and
+an isolated temporary data folder; it does not modify personal plans.
+
+### Studiensimulation / Study simulation
+
+Der eigene Menüpunkt **Studiensimulation** enthält benannte, duplizierbare und löschbare
+Notenszenarien. Jedem Szenario wird ein Studienplan zugeordnet; dessen Module und Kategorien
+bestimmen die simulierte Schlussnote. Beim tatsächlichen Verlauf werden echte Ergebnisse über
+Kursverknüpfung, Kursnummer oder einen eindeutigen exakten Titel übernommen. Bekannte Noten und
+Bewertungsgewichtungen sind in der Simulation geschützt; Annahmen füllen nur offene Leistungen.
+
+Both **Grades** and **Study simulation** use form-based component editing: assessment names,
+weights, actual grades, separate assumptions for pending work, a target module grade, and an additive
+bonus such as +0.25. Forecasts show the known-component average, a possible 1–6 range, the required
+average on pending assessments and the grade resulting from entered assumptions. Bonuses are added
+after the weighted average and grades are capped at 6. Actual final grades do not use assumptions.
+
+**Änderungen mit „Übernehmen“ bestätigen und anschließend „Verschlüsselt speichern“.** Noten und
+Simulationen werden zusammen in `grades.enc` gespeichert; sie erscheinen weder in der normalen
+Plandatei noch im Planexport. Beim Verlassen beider privaten Ansichten wird der Speicher gesperrt.
+Vorhandene verschlüsselte Notendateien bleiben kompatibel. Für alte manuelle Noteneinträge mit
+abweichendem Titel kann im Noteneditor eine explizite Kursverknüpfung gewählt werden.
+
+**Apply edits, then choose Save encrypted.** Real marks and scenarios share the password-encrypted
+vault; actual marks remain separate from hypothetical assumptions. Leaving both private views locks
+the vault. Simulated averages use the same category weights and exclusions as the grade page;
+recognition and individual assessment regulations remain subject to manual verification. Developer
+coverage: `node --test tests/*.test.cjs` and `python3 tests/browser_grades.py`.
+
+
+Die Modulbearbeitung verwendet jetzt ebenfalls ein Formular mit Dropdowns für Semester,
+Anrechnungskategorie und Status statt Browser-Eingabefenstern. Titel, ECTS, Spezialisierungsgebiet
+und Bachelor-Verwendung können dort gemeinsam bearbeitet werden. Die Quellen-/Sperrprüfungen
+bleiben bestehen. / Course editing now uses a form with semester, category and status dropdowns
+instead of native browser prompts. Pending manual timetable input survives background schedule refreshes.

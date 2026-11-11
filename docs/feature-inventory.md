@@ -47,3 +47,24 @@ local application on this branch; it does not imply official ETH academic recogn
 
 Draft planning is intentionally permissive: an incomplete course mix can be saved and explored.
 The audit reports unmet requirements; it does not prevent recording a work-in-progress plan.
+
+## Subsequent course-details/calendar update
+
+Historical offers are selectable and movable again: missing exact offers and season mismatches
+produce separate warnings, not rejection. Clickable module titles now show supplied descriptions,
+learning objectives, contents and literature with DE/EN fallback. Calendar palette/time-cell click
+and drag flows prefill manual meeting entry and support multiple weekly meetings per module.
+The limitations concerning personal academic recognition and full date/recurrence semantics remain.
+
+## Subsequent protected grade-simulation update
+
+A separate Study simulation navigation item now supports named, duplicable/deletable scenarios,
+study-plan selection, course-based hypothetical grades, and final-grade calculation. Real grades and
+scenario entries have form-based assessment/component editing, pending-grade assumptions, target
+exam calculations and additive bonuses. Actual-study simulations inherit identifiable actual marks
+and assessment weights, with read-only actual components. An unknown bonus can still be explored
+as an assumption. Everything persists in the encrypted vault rather than study-plan JSON.
+
+Still partial: official transcript import, authoritative assessment rules and rounding, automatic
+recognition, and grade matching for unlinked legacy names that differ from their course titles.
+The editor supports explicitly linking those records; ambiguous matches are never guessed.

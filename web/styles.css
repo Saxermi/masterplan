@@ -30,3 +30,8 @@
 .assignment-choice input{width:auto;margin-top:4px}
 .semester-course[draggable="true"]{cursor:grab}
 .semester-col.drop-target{outline:3px solid #4185a9;outline-offset:2px}
+
+.course-title{border:0;background:transparent;color:inherit;font:inherit;font-weight:inherit;text-align:left;padding:0;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+.course-detail-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+.schedule-module{display:inline-block;border:1px solid var(--border,#ccc);border-radius:8px;padding:10px;margin:5px;cursor:grab}
+.daycell:focus{outline:2px solid #4185a9;outline-offset:-2px}

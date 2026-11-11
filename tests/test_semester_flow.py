@@ -12,9 +12,10 @@ class SemesterFlow(unittest.TestCase):
     def tearDown(self):self.tmp.cleanup()
     def search(self,term,category='core',programme='cse'):
         return self.catalog.search('',programme,category,[],term,['2025W','2026S','2026W','2027S','2027W'],40,0,select_offering)
-    def test_only_exact_offerings_no_historical_proxy(self):
-        self.assertEqual(self.search('2027W')['total'],0)
-        self.assertEqual(self.search('2027S')['total'],0)
+    def test_missing_offerings_have_historical_reference_and_season_warning(self):
+        self.assertTrue(self.search('2027W')['results'][0]['offering']['proxy'])
+        self.assertFalse(self.search('2027W')['results'][0]['offering']['seasonMismatch'])
+        self.assertTrue(self.search('2027S')['results'][0]['offering']['seasonMismatch'])
         self.assertEqual(self.search('2026W')['results'][0]['offering']['unit_id'],111)
     def test_two_concrete_semesters_include_both_offerings(self):
         result=self.search('2026S,2026W','','all')
@@ -31,8 +32,9 @@ class SemesterFlow(unittest.TestCase):
             c.execute('INSERT INTO unitsectionlink VALUES (801,30)')
         self.assertEqual(self.search('2026W','sip')['total'],1)
         self.assertEqual(self.search('2026W','scientific')['total'],2)
-    def test_new_wrong_term_allocations_are_rejected_by_store(self):
+    def test_historical_allocations_remain_saveable(self):
         store=Store(Path(self.tmp.name)/'personal');s=store.get()
         s['actualPlan']['courses']=[dict(id='bad',number='401-0000-00L',title='Wrong term',role='core',status='planned',ects=6,semester='2027S',unitId=111,sourceSemester='2026W',events=[])]
-        with self.assertRaisesRegex(ValueError,'not offered'):store.save(s)
-        self.assertEqual(store.get()['revision'],0)
+        saved=store.save(s)
+        self.assertEqual(saved['actualPlan']['courses'][0]['sourceSemester'],'2026W')
+        self.assertEqual(store.get()['revision'],1)

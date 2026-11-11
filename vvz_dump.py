@@ -187,17 +187,17 @@ class LocalCatalog:
         terms = window if semester == 'recent' else semester.split(',')
         if not 1 <= len(terms) <= 5 or any(not re.fullmatch(r'\d{4}[SW]', t) for t in terms):
             raise ValueError('Invalid semester selection')
-        filters = ["u.number IS NOT NULL", "u.semkez IN (" + ','.join('?' for _ in terms) + ")"]
-        values = list(terms)
+        filters = ["u.number IS NOT NULL", "u.semkez <= ?"]
+        values = [max(terms)]
         if category == 'scientific':
             filters.append("u.number IN ('401-2000-00L','402-2000-00L')")
         # Resolve section paths once, then use the section->unit index. A
         # correlated path scan for every learning unit is prohibitively slow.
         scope_sql = []
         scope_values = []
-        for terms in section_variants:
-            if terms:
-                scope_sql.append("(" + self._path_filter(terms, scope_values) + ")")
+        for scope_terms in section_variants:
+            if scope_terms:
+                scope_sql.append("(" + self._path_filter(scope_terms, scope_values) + ")")
         if scope_sql:
             filters.append("u.id IN (SELECT l.unit_id FROM unitsectionlink l WHERE l.section_id IN "
                            "(SELECT p.id FROM sectionpathview p WHERE " + " OR ".join(scope_sql) + "))")
@@ -214,6 +214,8 @@ class LocalCatalog:
                     filters.append("(LOWER(COALESCE(u.title,'')) LIKE ? ESCAPE '\\' OR "
                                    "LOWER(COALESCE(u.title_english,'')) LIKE ? ESCAPE '\\')")
                     values.extend([_path_like(word), _path_like(word)])
+        filters.append("NOT EXISTS (SELECT 1 FROM learningunit newer WHERE newer.number=u.number AND newer.semkez>u.semkez AND newer.semkez<=? AND SUBSTR(newer.semkez,5,1)=SUBSTR(u.semkez,5,1))")
+        values.append(max(terms))
         where = " AND ".join(filters)
         with self.lock:
             self._ensure_indexes()
@@ -231,8 +233,10 @@ class LocalCatalog:
                     semesters = {}
                     for r in records:
                         semesters.setdefault(r["semkez"], r["id"])
-                    wanted = max(semesters)
-                    offering = select_offering(semesters, wanted) if wanted else None
+                    wanted = next((t for t in sorted(terms,reverse=True) if t in semesters), max(terms))
+                    source = wanted if wanted in semesters else max((t for t in semesters if t[-1]==wanted[-1]),default=max(semesters))
+                    offering = {"unit_id": semesters[source], "source_semester": source, "proxy": source!=wanted,
+                                "seasonMismatch": source[-1]!=wanted[-1], "target_semester": wanted}
                     if not offering or not offering.get("unit_id"):
                         continue
                     rec = next(r for r in records if r["id"] == offering["unit_id"])

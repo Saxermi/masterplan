@@ -62,7 +62,7 @@ def main():
             page=browser.new_page(viewport={'width':1440,'height':980}, device_scale_factor=1)
             # Render the real frontend assets with a mocked local API, without a live server.
             html=(ROOT/'web/index.html').read_text(encoding='utf-8')
-            html=html.replace('<script type="module" src="/app.js"></script>','').replace('<link rel="stylesheet" href="/styles.css">','').replace('<script src="/study-rules.js"></script>','')
+            html=html.replace('<script type="module" src="/app.js"></script>','').replace('<link rel="stylesheet" href="/styles.css">','').replace('<script src="/study-rules.js"></script>','').replace('<script src="/grade-model.js"></script>','')
             page.set_content(html)
             page.add_style_tag(content=(ROOT/'web/styles.css').read_text(encoding='utf-8'))
             guidelines=json.loads((ROOT/'guidelines/cse-guidelines.json').read_text(encoding='utf-8'))
@@ -78,6 +78,7 @@ def main():
                };
              }""",[demo,guidelines])
             page.add_script_tag(content=(ROOT/'web/study-rules.js').read_text(encoding='utf-8'))
+            page.add_script_tag(content=(ROOT/'web/grade-model.js').read_text(encoding='utf-8'))
             page.add_script_tag(content=(ROOT/'web/app.js').read_text(encoding='utf-8'))
             page.wait_for_selector('.metric')
             page.screenshot(path=str(SHOTS/'01-dashboard.jpg'),full_page=True, type='jpeg', quality=78)

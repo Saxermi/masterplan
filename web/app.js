@@ -8,7 +8,7 @@ const eligibleCoreSelection = key => key === 'eligible-core-all' || (guidelines?
 const specialisations = ['Astrophysics','Biology','Chemistry','Computational Finance','Electromagnetics','Fluid Dynamics','Geophysics','Physics','Physics of the Atmosphere','Robotics','Systems and Control'];
 const roleList = ['core','specialisation','specialisation-seminar','elective','case','project','sip','thesis','scientific','extra','requirement'];
 const roles = {core:['Core Course','Core Course'],specialisation:['Spezialisierungsvorlesung','Specialisation lecture'],'specialisation-seminar':['Spezialisierungsseminar','Specialisation seminar'],elective:['Elective','Elective'],case:['Case Study','Case study'],project:['Semesterprojekt','Semester project'],sip:['Science in Perspective','Science in Perspective'],thesis:['Masterarbeit','Master thesis'],scientific:['Scientific Works (0 ECTS)','Scientific Works (0 ECTS)'],extra:['Nur besuchen · 0 ECTS','Attend only · 0 ECTS'],requirement:['Zulassungsauflage','Additional requirement']};
-const navItems = [['dashboard','⌂','Übersicht','Dashboard'],['schedule','▦','Stundenplan','Timetable'],['semesters','▤','Semesterplanung','Semester planning'],['plans','▧','Studienpläne','Study plans'],['catalog','⌕','Modulkatalog','Course catalogue'],['requirements','✓','Studienregeln','Requirements'],['grades','∑','Noten (separat)','Grades (private)'],['settings','⚙','Einstellungen','Settings']];
+const navItems = [['dashboard','⌂','Übersicht','Dashboard'],['schedule','▦','Stundenplan','Timetable'],['semesters','▤','Semesterplanung','Semester planning'],['plans','▧','Studienpläne','Study plans'],['catalog','⌕','Modulkatalog','Course catalogue'],['requirements','✓','Studienregeln','Requirements'],['grades','∑','Noten (separat)','Grades (private)'],['simulation','◇','Studiensimulation','Study simulation'],['settings','⚙','Einstellungen','Settings']];
 const tr = (de,en) => state.language === 'en' ? en : de;
 const trRole = r => (roles[r] || roles.extra)[state.language === 'en' ? 1 : 0];
 const semName = x => x ? `${x.endsWith('S')?'FS':'HS'} ${x.slice(0,4)}` : '—';
@@ -33,7 +33,7 @@ const reviewUrl = c => c.reviewAvailable && /^[A-Za-z0-9-]{5,35}$/.test(c.number
 function courseLinks(c){const links=[];const vvz=officialVvzUrl(c)||`https://www.vvz.ethz.ch/Vorlesungsverzeichnis/sucheLehrangebotPre.view?semkez=${encodeURIComponent(c.semester||recentTerms()[2])}&lang=${state.language}`;if(vvz)links.push(`<a href="${attrs(vvz)}" target="_blank" rel="noopener noreferrer">${tr('ETH-Vorlesungsverzeichnis','ETH course catalogue')} ↗</a>`);const rev=reviewUrl(c);if(rev)links.push(`<a href="${attrs(rev)}" target="_blank" rel="noopener noreferrer">CourseReview ↗</a>`);return links.length?`<div class="course-links">${links.join(' ')}</div>`:'';}
 const meetingData = new Map();
 let meetingTimer=null;
-function offeringFor(semesters,target){return {unitId:semesters?.[target]||null,sourceSemester:semesters?.[target]?target:null,proxy:false};}
+function offeringFor(semesters,target){return MasterPlanRules.resolveOffering({offerings:semesters},target);}
 async function syncMeetingOptions(){if(page!=='schedule')return;const p=plan(),sem=schedule.current||p.semesters[0];let changed=false;for(const c of allCourses(p).filter(x=>x.semester===sem&&x.unitId)){const k=String(c.unitId),entry=meetingData.get(k);if((entry?.status==='failed'||entry?.status==='ready'&&['ready','failed'].includes(entry.groupStatus))&&Date.now()-(entry.polledAt||0)<60000)continue;try{const x=await request('/api/vvz/times/'+encodeURIComponent(k));if(x.status==='ready'){const oldKeys=entry?.meetings?.map(m=>m.slotKey).join(',');const newKeys=(x.meetings||[]).map(m=>m.slotKey).join(',');const updated=!!entry&&oldKeys!==newKeys;meetingData.set(k,{status:'ready',meetings:x.meetings||[],source:x.source,groupStatus:x.groupStatus||'queued',error:x.error||null,polledAt:Date.now(),changed:updated||entry?.changed});if(updated&&entry?.groupStatus==='ready')notify(tr('VVZ-Termine haben sich geändert. Bitte Auswahl überprüfen.','VVZ meetings changed. Please review your selections.'));changed=true;}else if(!entry)meetingData.set(k,{status:'queued',polledAt:Date.now()});}catch(e){meetingData.set(k,{status:'failed',error:e.message,polledAt:Date.now()});changed=true;}}if(changed&&page==='schedule')render();}
 function beginMeetingSync(){if(meetingTimer)clearInterval(meetingTimer);meetingTimer=null;if(page==='schedule'){meetingTimer=setInterval(()=>{if(page==='schedule')void syncMeetingOptions();},10000);void syncMeetingOptions();}}
 
@@ -95,20 +95,36 @@ async function runCatalogSearch(offset=0) {
   }
 }
 function updateStatus(msg) {$('#save-status').textContent=msg;}
-function changePage(next) {page=next;gradesCache=null;gradesPassword=null;$('#sidebar').classList.remove('open');render();if(next==='settings'){loadFolder();refreshDumpStatus();}}
+function changePage(next) {page=next;gradeDraft=null;if(!['grades','simulation'].includes(next)){gradesCache=null;gradesPassword=null;}$('#sidebar').classList.remove('open');render();if(next==='settings'){loadFolder();refreshDumpStatus();}}
 function pill(text,type='') {return `<span class="pill ${type}">${escape(text)}</span>`;}
 function button(text,action,extra='',cls='smallbtn'){return `<button class="${cls}" data-action="${action}" ${extra}>${text}</button>`;}
 function pageHeader(title,desc,action='') {return `<div class="row between wrap" style="margin-bottom:22px"><div><h1 class="page-title">${title}</h1><p class="subtitle" style="margin-bottom:0">${desc}</p></div>${action}</div>`;}
+let detailCourse=null,detailsBack='catalog';const unitDetailsCache=new Map();
+function moduleTitle(c){
+  const off=c.offering||{},unit=c.unitId||off.unit_id||null,term=c.sourceSemester||off.source_semester||c.semester||'';
+  return button(escape(c.title||c.title_english||c.number||tr('Modul','Course')),'course-details',`data-unit-id="${attrs(unit||'')}" data-title="${attrs(c.title||c.title_english||c.number||'')}" data-number="${attrs(c.number||'')}" data-source-semester="${attrs(term)}"`,'course-title');
+}
+function courseDetails(){
+  const entry=unitDetailsCache.get(String(detailCourse?.unitId)),unit=entry?.unit;
+  const field=key=>state.language==='en'?(unit?.[key+'_english']||unit?.[key]):(unit?.[key]||unit?.[key+'_english']);
+  return `${pageHeader(tr('Moduldetails','Course details'),escape(detailCourse?.title||''),button(tr('Zurück','Back'),'close-details'))}
+    <div class="card"><h2>${escape(detailCourse?.title)}</h2><p>${escape(detailCourse?.number||'')} · ${semName(detailCourse?.sourceSemester)}</p>${courseLinks(detailCourse||{})}
+    ${!detailCourse?.unitId?`<p>${tr('Keine VVZ-Kennung vorhanden. Details bitte im verlinkten Vorlesungsverzeichnis prüfen.','No VVZ unit ID is available. Please check the linked official catalogue.')}</p>`:entry?.error?`<p role="status">${escape(entry.error)}</p>${button(tr('Erneut laden','Retry'),'retry-details')}`:!unit?`<p role="status">${tr('Kursinformationen werden geladen…','Loading course information…')}</p>`:
+      [['abstract',tr('Kursbeschreibung','Course description')],['objective',tr('Lernziele','Learning objectives')],['content',tr('Inhalte','Contents')],['literature',tr('Literatur','Literature')]].map(([key,label])=>`<section><h3>${label}</h3><p class="course-detail-text">${escape(field(key)||tr('Keine Angaben in den Kursdaten vorhanden.','No information supplied in the course data.'))}</p></section>`).join('')}</div>`;
+}
+async function loadCourseDetails(){const course=detailCourse;if(!course?.unitId)return;const key=String(course.unitId);if(!unitDetailsCache.has(key)){try{const result=await request('/api/vvz/unit/'+encodeURIComponent(key));if(!result.unit)throw Error(tr('Keine Kursdaten vorhanden.','No course data available.'));unitDetailsCache.set(key,{unit:result.unit});}catch(e){unitDetailsCache.set(key,{error:e.message});}}if(page==='course-details'&&detailCourse===course)render();}
 function render() {
+  const previousEventForm=$('#event-form'),eventDraft=previousEventForm?{plan:previousEventForm.dataset.planId,term:previousEventForm.dataset.term,values:Object.fromEntries(new FormData(previousEventForm))}:null;
   document.documentElement.dataset.theme=state.theme;
   document.documentElement.lang=state.language;
   $('#lang-toggle').textContent=state.language.toUpperCase();
   $('#theme-toggle').textContent=state.theme==='dark'?'☀':'☾';
   $('#nav').innerHTML=navItems.map(([key,icon,de,en])=>`<button class="nav-item ${key===page?'active':''}" data-nav="${key}"><span>${icon}</span><span>${escape(tr(de,en))}</span></button>`).join('');
-  $('#top-title').textContent=(navItems.find(x=>x[0]===page)||navItems[0])[state.language==='en'?3:2];
-  const renderers = {dashboard:dashboard,schedule:schedule,semesters:semesters,plans:plans,catalog:catalog,requirements:requirements,grades:grades,settings:settings};
+  $('#top-title').textContent=page==='course-details'?tr('Moduldetails','Course details'):(navItems.find(x=>x[0]===page)||navItems[0])[state.language==='en'?3:2];
+  const renderers = {dashboard:dashboard,schedule:schedule,semesters:semesters,plans:plans,catalog:catalog,requirements:requirements,grades:grades,simulation:grades,settings:settings,'course-details':courseDetails};
   $('#app').innerHTML=(renderers[page]||dashboard)();
 
+  const nextEventForm=$('#event-form');if(eventDraft&&nextEventForm&&eventDraft.plan===nextEventForm.dataset.planId&&eventDraft.term===nextEventForm.dataset.term&&[...nextEventForm.elements.namedItem('course').options].some(o=>o.value===eventDraft.values.course)){for(const [key,value] of Object.entries(eventDraft.values)){const field=nextEventForm.elements.namedItem(key);if(field)field.value=value;}const selected=plan().courses.find(c=>c.id===eventDraft.values.course);if(selected)$('#manual-vvz-link').innerHTML=courseLinks(selected);}
   refreshAssignmentChoices();
   if(page==='schedule' && !meetingTimer)beginMeetingSync();
   else if(page!=='schedule' && meetingTimer){clearInterval(meetingTimer);meetingTimer=null;}
@@ -254,17 +270,21 @@ function allocationEditor(){
     <label>${tr('Zielplan','Target plan')}<select name="plan">${allPlans().map(p=>`<option value="${attrs(p.id)}" ${p.id===source.id?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label>
     <label>${tr('Semester','Semester')}<select name="semester">${[...new Set(allPlans().flatMap(p=>p.semesters).concat(recentTerms()))].sort().map(t=>`<option ${t===c.semester?'selected':''} value="${t}">${semName(t)}</option>`).join('')}</select></label>
     <label>${tr('Anrechnungskategorie','Credit category')}<select name="role">${roleList.map(r=>`<option ${r===MasterPlanRules.allocationRole(c)?'selected':''} value="${r}">${escape(trRole(r))}</option>`).join('')}</select></label>
-    <p class="hint">${tr('Bei Semesterwechsel werden gewählte Termine zurückgesetzt. Verfügbar sind nur bestätigte Kursangebote; manuelle Module sind frei planbar.','Changing semester resets selected events. Linked modules require a confirmed offering; manual modules can be freely planned.')}</p>
+    <p class="hint">${tr('Bei Semesterwechsel werden gewählte Termine zurückgesetzt. Historische Referenzen sind erlaubt und werden als unbestätigt markiert.','Changing semester resets selected events. Historical references are allowed and labelled as unconfirmed.')}</p>
     ${button(tr('Übernehmen','Apply'),'apply-reassignment','','button')}${button(tr('Abbrechen','Cancel'),'cancel-reassignment')}</form></div>`;
+}
+function offeringWarnings(c){
+  if(!c.sourceSemester||!c.semester||c.sourceSemester===c.semester)return '';
+  return `<span data-warning="historical">${pill(tr('Historische Referenz – kein bestätigtes Angebot: ','Historical reference – no confirmed offering: ')+semName(c.sourceSemester),'orange')}</span>${c.sourceSemester.slice(-1)!==c.semester.slice(-1)?`<span data-warning="season">${pill(tr('Achtung: FS/HS weicht vom Zielsemester ab','Warning: spring/autumn differs from target semester'),'orange')}</span>`:''}`;
 }
 function semesterBoard(p) {
   return `<div class="semester-cols">${p.semesters.map(sem=>{
     const locked=p.lockedSemesters.includes(sem),rows=allCourses(p).filter(c=>c.semester===sem);
     return `<section class="semester-col" data-drop-plan="${attrs(p.id)}" data-drop-sem="${attrs(sem)}"><div class="row between"><div><strong>${escape(semName(sem))}</strong><div class="tiny muted">${formatNum(rows.filter(credited).reduce((v,c)=>v+safe(c.ects),0))} ECTS</div></div>
       <button class="smallbtn" data-action="lock-semester" data-plan-id="${attrs(p.id)}" data-sem="${attrs(sem)}" title="${tr('Semester fixieren','Lock semester')}">${locked?'🔒':'🔓'}</button>${button('×','remove-semester',`data-plan-id="${attrs(p.id)}" data-sem="${attrs(sem)}" title="${tr('Semester entfernen','Remove semester')}"`)}</div>
-      ${rows.length?rows.map(c=>`<div draggable="${!fixed(c,p)&&p.courses.some(x=>x.id===c.id)}" data-drag-plan="${attrs(p.id)}" data-drag-course="${attrs(c.id)}" class="semester-course ${c.role==='extra'?'extra':''} ${c.proxy?'proxy':''}"><div class="row between"><strong>${escape(c.title||c.number||'Course')}</strong>${c.locked?'🔒':''}</div>
+      ${rows.length?rows.map(c=>`<div draggable="${!fixed(c,p)&&p.courses.some(x=>x.id===c.id)}" data-drag-plan="${attrs(p.id)}" data-drag-course="${attrs(c.id)}" class="semester-course ${c.role==='extra'?'extra':''} ${c.proxy?'proxy':''}"><div class="row between"><strong>${moduleTitle(c)}</strong>${c.locked?'🔒':''}</div>
         <div class="small muted">${escape(c.number||'')} · ${escape(trRole(MasterPlanRules.allocationRole(c)))}</div>${courseLinks(c)}
-        <div class="badge-group" style="margin-top:8px">${pill(`${formatNum(credited(c)?c.ects:0)} ${tr('anrechenbar','credited')}`,c.role==='extra'||c.role==='requirement'?'orange':'')}${c.proxy?pill(tr('Historische Referenz – kein bestätigtes Angebot: ','Historical reference – no confirmed offering: ')+semName(c.sourceSemester),'orange'):''}</div>
+        <div class="badge-group" style="margin-top:8px">${pill(`${formatNum(credited(c)?c.ects:0)} ${tr('anrechenbar','credited')}`,c.role==='extra'||c.role==='requirement'?'orange':'')}${offeringWarnings(c)}</div>
         <div class="actions" style="margin-top:12px">${button(tr('Zuordnung ändern','Change allocation'),'reassign-course',`data-id="${attrs(c.id)}" data-plan-id="${attrs(p.id)}"`)}${button(tr('Bearbeiten','Edit'),'edit-course',`data-id="${attrs(c.id)}" data-plan-id="${attrs(p.id)}"`)}${button(c.locked?'🔒':'🔓','lock-course',`data-id="${attrs(c.id)}" data-plan-id="${attrs(p.id)}"`)}
           ${button(tr('Abwählen','Remove'),'remove-course',`data-id="${attrs(c.id)}" data-plan-id="${attrs(p.id)}"`, 'dangerbtn')}</div></div>`).join(''):`<p class="no-results">${tr('Noch keine Module zugewiesen','No assigned courses yet')}</p>`}
       <div class="actions" style="margin-top:14px">${button('+ '+tr('Kurs aus Merkliste','Course from shortlist'),'focus-assign',`data-plan-id="${attrs(p.id)}" data-sem="${attrs(sem)}"`)}</div></section>`;
@@ -278,7 +298,7 @@ function refreshAssignmentChoices(){
   const available=MasterPlanRules.availableShortlist(state,planId);
   const allowed=new Set(available.map(i=>i.id));selectedInterests=new Set([...selectedInterests].filter(i=>allowed.has(i)));
   $('#assignment-choices').innerHTML=available.filter(i=>`${i.title} ${i.number||''}`.toLowerCase().includes(query)).map(i=>{
-    return `<label class="assignment-choice"><input type="checkbox" name="interest" value="${attrs(i.id)}" ${selectedInterests.has(i.id)?'checked':''}><span><strong>${escape(i.title)}</strong><br><small>${escape(i.number||'')} · ${formatNum(i.ects)} ECTS · ${escape(trRole(i.suggestedRole||'elective'))}${(i.unitId||Object.keys(i.offerings||{}).length)&&!i.offerings?.[term]&&i.sourceSemester!==term?' · '+tr('Nicht im Zielsemester angeboten','Not offered in target semester'):''}</small></span></label>`;
+    return `<label class="assignment-choice"><input type="checkbox" name="interest" value="${attrs(i.id)}" ${selectedInterests.has(i.id)?'checked':''}><span><strong>${escape(i.title)}</strong><br><small>${escape(i.number||'')} · ${formatNum(i.ects)} ECTS · ${escape(trRole(i.suggestedRole||'elective'))}${(i.unitId||Object.keys(i.offerings||{}).length)&&!i.offerings?.[term]&&i.sourceSemester!==term?' · '+tr('Historische Referenz – Angebot unbestätigt','Historical reference – offering unconfirmed'):''}</small></span></label>`;
   }).join('')||`<p class="muted">${tr('Keine unzugewiesenen Module gefunden.','No unassigned modules found.')}</p>`;
   $('#assignment-count').textContent=`${selectedInterests.size} ${tr('ausgewählt','selected')}`;
 }
@@ -297,7 +317,7 @@ function semesters() {
     <div class="card" style="margin-bottom:19px"><div class="row between wrap"><div><h2 class="section-title">${tr('Tatsächliches Studium','Actual studies')}</h2><p class="small muted">${tr('Hier nur deine realen Entscheidungen. Keine Szenario-Spezialisierung.','Only your actual choices. No scenario specialisation.')}</p></div>
     <div class="actions">${button('+ '+tr('Semester hinzufügen','Add semester'),'add-semester','data-plan-id="actual"')}</div></div>${semesterBoard(actual())}</div>
     <div class="card"><div class="row between wrap"><div><h2 class="section-title">${tr('Aus Merkliste einem Semester zuweisen','Assign shortlisted course to a semester')}</h2><p class="small muted">${tr('Katalog → zuerst interessante Module merken; hier daraus auswählen.','Catalogue → shortlist interesting courses first; select them here.')}</p></div>${button(tr('Modulkatalog öffnen','Open catalogue'),'go-catalog')}</div>
-    ${assignmentForm(p)}${allocationEditor()}
+    ${assignmentForm(p)}${allocationEditor()}${moduleEditor()}
       <p class="hint">${tr('Für ein Seminar die Kategorie «Spezialisierungsseminar» wählen. Seine ECTS zählen zur Spezialisierung; es ersetzt keine der vier Vorlesungen.','Choose Specialisation seminar for a seminar. Its credits count towards the specialisation; it does not replace any of the four lectures.')}</p></div>
     <div class="card spaced"><div class="row between wrap"><div><h2 class="section-title">${tr('Szenarien / alternative Spezialisierungen','Scenarios / alternative specialisations')}</h2><p class="small muted">${tr('Diese Semester sind hypothetisch und ändern deinen tatsächlichen Verlauf nicht.','These semesters are hypothetical and do not change the actual study record.')}</p></div>${button('+ '+tr('Neues Szenario','New scenario'),'new-plan')}</div>
       <div class="scenario-tiles">${state.plans.map(x=>`<div class="scenario-tile ${state.activePlan===x.id?'selected':''}"><strong>${escape(x.name)}</strong><div class="small muted">${escape(x.specialisation||'–')}</div>${button(tr('Bearbeiten','Edit'),'edit-scenario',`data-id="${attrs(x.id)}"`)}</div>`).join('')}</div>
@@ -319,16 +339,17 @@ function schedule() {
   }
   const cells=[];for(let h=8;h<=19;h++){cells.push(`<div class="hour">${String(h).padStart(2,'0')}:00</div>`);
     for(let d=0;d<7;d++){const matching=events.filter(e=>e.day===d&&timeToM(e.start)<(h+1)*60&&timeToM(e.end)>h*60&&timeToM(e.start)>=h*60);
-      cells.push(`<div class="daycell">${matching.map(e=>`<div class="event ${e.c.role==='extra'?'extra':''} ${conflicts.has(e.c.id+'-'+e.day)?'conflict':''}" title="${attrs(e.c.title)}"><strong>${escape(e.c.title)}</strong><div class="tiny">${escape(e.start)}–${escape(e.end)}</div><div class="tiny">${escape(e.building||'')} ${escape(e.floor||'')} ${escape(e.room||'')}</div></div>`).join('')}</div>`);}}
+      cells.push(`<div class="daycell" role="button" tabindex="0" data-action="place-slot" data-day="${d}" data-start="${String(h).padStart(2,'0')}:00">${matching.map(e=>`<div class="event ${e.c.role==='extra'?'extra':''} ${conflicts.has(e.c.id+'-'+e.day)?'conflict':''}" title="${attrs(e.c.title)}"><strong>${escape(e.c.title)}</strong><div class="tiny">${escape(e.start)}–${escape(e.end)}</div><div class="tiny">${escape(e.building||'')} ${escape(e.floor||'')} ${escape(e.room||'')}</div></div>`).join('')}</div>`);}}
   return `${pageHeader(tr('Stundenplan','Timetable'),tr('Wähle erst den Kurs aus deinem belegten Semester; kein manuelles Suchen nötig.','Choose a course already assigned to this semester; no manual search needed.'))}
     <div class="row wrap" style="margin-bottom:16px"><label class="inline-label">${tr('Studienplan','Study plan')} ${programmeOptions()}</label>
       <select id="schedule-sem" class="plan-select">${p.semesters.map(x=>`<option value="${x}" ${x===semester?'selected':''}>${semName(x)}</option>`).join('')}</select>
       ${button('+ '+tr('Module zuweisen','Assign courses'),'focus-schedule-assign')}</div>
     ${conflicts.size?`<div class="note">⚠ ${tr('Zeitüberschneidungen','Overlapping events')}: ${conflicts.size}</div>`:''}
+    <div class="card" id="schedule-modules"><h2>${tr('Module dieses Semesters','Modules in this semester')}</h2><p>${tr('Modul in eine Zeitzelle ziehen oder eine Zeitzelle anklicken. Danach Zeit prüfen und speichern. Ein Modul kann mehrere Termine haben.','Drag a module onto a time cell or click a time cell. Review and save the time. A module may have multiple meetings.')}</p>${courses.filter(c=>p.courses.some(x=>x.id===c.id)).map(c=>`<button type="button" class="schedule-module" data-action="choose-schedule-module" data-id="${attrs(c.id)}" draggable="${!fixed(c,p)}" data-schedule-course="${attrs(c.id)}">${escape(c.title)} ${fixed(c,p)?'🔒':''}</button>`).join('')}</div>
     <div class="card schedule-wrap"><div class="schedule"><div></div>${days.map(d=>`<div class="dayhead">${d}</div>`).join('')}${cells.join('')}</div></div>
-    <div class="card spaced" id="schedule-assignment"><h2>${tr('Modul diesem Semester zuweisen','Assign a course to this semester')}</h2>${assignmentForm(p)}${allocationEditor()}${button(tr('Modul manuell erfassen','Add custom course'),'manual-course',`data-sem="${attrs(semester)}"`)}</div>
+    <div class="card spaced" id="schedule-assignment"><h2>${tr('Modul diesem Semester zuweisen','Assign a course to this semester')}</h2>${assignmentForm(p)}${allocationEditor()}${moduleEditor()}${button(tr('Modul manuell erfassen','Add custom course'),'manual-course',`data-sem="${attrs(semester)}"`)}</div>
     <div class="card spaced"><h2 class="section-title">${tr('Termin hinzufügen','Add a meeting')}</h2>
-      ${courses.length?`<form id="event-form"><div id="manual-vvz-link">${courseLinks(courses.find(c=>p.courses.some(x=>x.id===c.id))||courses[0])}</div><div class="filterbar"><div class="field"><label>${tr('Kurs dieses Semesters','Course assigned this term')}</label><select name="course" required>${courses.filter(c=>p.courses.some(x=>x.id===c.id)).map(c=>`<option value="${attrs(c.id)}">${escape(c.title)}</option>`).join('')}</select></div>
+      ${courses.length?`<form id="event-form" data-plan-id="${attrs(p.id)}" data-term="${attrs(semester)}"><div id="manual-vvz-link">${courseLinks(courses.find(c=>p.courses.some(x=>x.id===c.id))||courses[0])}</div><div class="filterbar"><div class="field"><label>${tr('Kurs dieses Semesters','Course assigned this term')}</label><select name="course" required>${courses.filter(c=>p.courses.some(x=>x.id===c.id)).map(c=>`<option value="${attrs(c.id)}">${escape(c.title)}</option>`).join('')}</select></div>
         <div class="field"><label>${tr('Wochentag','Weekday')}</label><select name="day">${days.map((d,i)=>`<option value="${i}">${d}</option>`).join('')}</select></div>
         <div class="field"><label>${tr('Beginn','Start')}</label><input name="start" type="time" value="10:00" required></div>
         <div class="field"><label>${tr('Ende','End')}</label><input name="end" type="time" value="12:00" required></div></div>
@@ -337,7 +358,7 @@ function schedule() {
         `<p class="note">${tr('Du hast diesem Semester noch keine Kurse zugewiesen. Wähle zuerst Kurse aus deiner Merkliste.','No courses have been assigned this term. Choose them from your shortlist first.')}</p>${button(tr('Zur Semesterplanung','Go to semester planning'),'go-semesters')}`}
     </div><div class="card spaced"><h2 class="section-title">${tr('Kurse und Termine im ausgewählten Semester','Courses and events this semester')}</h2>
     <p class="hint">${tr('VVZ-Termine werden automatisch im Hintergrund geladen (höchstens eine VVZAPI-Anfrage pro Minute; nur bei Bedarf online). Wähle die gewünschten Slots, z. B. deine Übungsgruppe, aus. Bereits manuelle Termine werden nicht überschrieben.','VVZ meetings are loaded automatically in the background (at most one VVZAPI request per minute; online only if needed). Choose the relevant slots such as your exercise group. Manual events are never overwritten.')}</p>
-    ${courses.map(c=>{const info=c.unitId?meetingData.get(String(c.unitId)):null;const slots=info?.meetings||[];return `<div class="meeting-unit"><div class="course-card"><div><div class="course-name">${escape(c.title)}</div><div class="course-meta">${escape(c.number||'')} · ${trRole(MasterPlanRules.allocationRole(c))} ${c.proxy?'· Proxy '+semName(c.sourceSemester):''}</div>${courseLinks(c)}</div>${p.courses.some(x=>x.id===c.id)?button(tr('Manuelle Termine bearbeiten','Edit meetings'),'edit-events',`data-id="${attrs(c.id)}"`):''}</div>
+    ${courses.map(c=>{const info=c.unitId?meetingData.get(String(c.unitId)):null;const slots=info?.meetings||[];return `<div class="meeting-unit"><div class="course-card"><div><div class="course-name">${moduleTitle(c)}</div><div class="course-meta">${escape(c.number||'')} · ${trRole(MasterPlanRules.allocationRole(c))} ${offeringWarnings(c)}</div>${courseLinks(c)}</div>${p.courses.some(x=>x.id===c.id)?button(tr('Manuelle Termine bearbeiten','Edit meetings'),'edit-events',`data-id="${attrs(c.id)}"`):''}</div>
       ${c.unitId?(info?.status==='ready'?slots.length?`<div class="meeting-options"><div class="small muted">${tr('Offizielle VVZ-Zeitfenster – frei auswählen','Official VVZ time slots – select as needed')}${c.proxy?` · ${tr('Historischer Proxy','Historical proxy')}: ${semName(c.sourceSemester)}`:''}${info.changed?` · ⚠ ${tr('VVZ-Termine geändert','VVZ schedule changed')}`:''}${info.groupStatus==='queued'?` · ${tr('Weitere VVZ-Termine werden nachgeladen','Additional VVZ meetings loading')}`:''}</div>${slots.map((m,i)=>`<label class="meeting-option"><input type="checkbox" data-slot="${attrs(c.id)}" value="${i}" ${c.events?.some(e=>e.apiSlot===m.slotKey)?'checked':''}> <span>${escape(m.label||'')} · ${escape(['Mo','Di','Mi','Do','Fr','Sa','So'][m.day]||'')} ${escape(m.start||'')}–${escape(m.end||'')} · ${escape([m.building,m.floor,m.room].filter(Boolean).join(' '))}${m.date?` · ${escape(m.date)}`:''}${m.note?`<br><small class="muted">${escape(m.note)}</small>`:''}</span></label>`).join('')}${button(tr('Auswahl übernehmen','Apply selected slots'),'apply-vvz-slots',`data-id="${attrs(c.id)}"`)}</div>`:`<p class="small muted">${info.groupStatus==='queued'?tr('Fehlende Zeiten werden von ETH VVZ nachgeladen; bitte kurz warten.','Missing times are loading from ETH VVZ; please wait.'):info.groupStatus==='failed'?escape(info.error||tr('ETH VVZ momentan nicht erreichbar; erneuter Versuch folgt.','ETH VVZ currently unavailable; will retry.')):tr('Keine regulären Zeiten gefunden; manuelle Eingabe möglich.','No regular times found; manual entry available.')}</p>`:`<p class="small muted">${info?.status==='failed'?escape(info.error):tr('VVZ-Termine werden geladen / warten auf API-Limit…','Loading VVZ meetings / waiting for API rate limit…')}</p>`):`<p class="small muted">${tr('Manueller Kurs – keine VVZ-Kennung vorhanden.','Manual course – no VVZ unit ID.')}</p>`}</div>`;}).join('')||`<p class="muted small">${tr('Keine Kurse','No courses')}</p>`}</div>`;
 }
 
@@ -350,7 +371,7 @@ function catalog() {
   return `${pageHeader(tr('Modulkatalog & Merkliste','Course catalogue & shortlist'),tr('1. Entdecke und merke interessante Kurse. 2. Weise sie in der Semesterplanung zu.','1. Find and shortlist courses. 2. Assign them in semester planning.'),button(tr('Zur Semesterplanung','Semester planning'),'go-semesters','','button'))}
   <div class="card" style="margin-bottom:20px"><div class="row between wrap"><div><h2 class="section-title">★ ${tr('Meine interessanten Module','My shortlisted courses')}</h2><p class="muted small">${tr('Primäre Quelle für deine Semesterplanung – unabhängig vom aktuellen Studienplan.','Primary source for semester planning, independent of the active plan.')}</p></div>
     ${button('+ '+tr('Modul manuell merken','Shortlist manually'),'manual-interest')}</div>
-    ${interest.length?`<div class="shortlist-grid">${interest.map(c=>`<div class="shortlist-item"><strong>${escape(c.title)}</strong><div class="small muted">${escape(c.number||tr('Eigenes Modul','Custom course'))} · ${formatNum(c.ects)} ECTS · ${escape(trRole(c.suggestedRole||'elective'))}</div>
+    ${interest.length?`<div class="shortlist-grid">${interest.map(c=>`<div class="shortlist-item"><strong>${moduleTitle(c)}</strong><div class="small muted">${escape(c.number||tr('Eigenes Modul','Custom course'))} · ${formatNum(c.ects)} ECTS · ${escape(trRole(c.suggestedRole||'elective'))}</div>
     ${courseLinks(c)}<div class="actions">${button(tr('Für Semester verwenden','Assign to semester'),'focus-assign',`data-interest-id="${attrs(c.id)}"`)}${button(tr('Entfernen','Remove'),'remove-interest',`data-id="${attrs(c.id)}"`,'dangerbtn')}</div></div>`).join('')}</div>`:
       `<p class="note">${state.interests.length?tr('Alle gemerkten Module sind im Zielplan bereits zugewiesen.','All shortlisted modules are already assigned in this plan.'):tr('Noch keine interessanten Module gespeichert. Die Suche unten ist dein Entdeckungswerkzeug.','No shortlisted courses. The search below is for discovery.')}</p>`}</div>
   <div class="card" style="margin-bottom:20px"><h2 class="section-title">${tr('ETH-Kurse entdecken','Discover ETH courses')}</h2>
@@ -358,12 +379,12 @@ function catalog() {
       <div class="field"><label>${tr('Studiengang','Degree programme')}</label><select name="programme">${Object.entries(programmes).map(([key,v])=>`<option value="${key}" ${searchParams.programme===key?'selected':''}>${escape(v)}</option>`).join('')}</select></div>
       <div class="field"><label>${tr('Kategorie','Category')}</label><select name="category">${categories.map(([key,v])=>`<option value="${key}" ${searchParams.category===key?'selected':''}>${escape(v)}</option>`).join('')}</select></div>
       <div class="field"><label>${tr('Zielsemester / Zeitraum','Semester / window')}</label><select name="semester">${semesterChoices.map(([key,v])=>`<option value="${key}" ${searchParams.semester.split(',')[0]===key?'selected':''}>${escape(v)}</option>`).join('')}</select></div><div class="field"><label>${tr('Zusätzliches Semester (optional)','Additional semester (optional)')}</label><select name="semester2"><option value="">—</option>${semesterChoices.map(([key,v])=>`<option value="${key}" ${searchParams.semester.split(',')[1]===key?'selected':''}>${escape(v)}</option>`).join('')}</select></div>
-    </div><div class="row between wrap"><p class="hint">${tr('Wähle ein konkretes Semester oder zusätzlich ein zweites. Angezeigt werden nur bestätigte Angebote dieser Semester.','Choose a specific semester and optionally a second one. Only confirmed offerings in those terms are shown.')}</p>
+    </div><div class="row between wrap"><p class="hint">${tr('Wähle ein oder zwei Semester. Fehlende Angebote werden durch markierte historische Referenzen ergänzt.','Choose one or two semesters. Missing offerings use labelled historical references.')}</p>
       <div class="actions">${button(tr('RW Bachelor / Auflagen','RW Bachelor / requirements'),'browse-rw')}${button(tr('MSc Core Electives','MSc core electives'),'browse-eligible-core')}<button class="button" type="submit">⌕ ${tr('Suchen','Search')}</button></div></div></form></div>
   <div class="grid columns-2"><div class="card"><div class="row between"><h2 class="section-title">${tr('Gefundene Module','Search results')}</h2>${pill(searchState||tr('Noch nicht geladen','Not loaded'))}</div>
     ${results.length?results.map(c=>{const name=state.language==='en'?(c.title_english||c.title):(c.title||c.title_english),off=c.offering||{};
-      const stored=state.interests.some(i=>i.number===c.number&&c.number || (!c.number&&i.title===name));return `<div class="course-card"><div><div class="course-name">${escape(name||c.number)}</div><div class="course-meta">${escape(c.number)} · ${formatNum(c.credits)} ECTS</div>
-        <div class="badge-group" style="margin-top:8px">${(c.coreProgrammes||[]).map(name=>pill(name)).join('')}${Object.keys(c.semesters||{}).map(term=>pill(semName(term))).join('')}${c.eligibleCoreElective?pill(tr('MSc-Core → potenzielles CSE-Elective','MSc core → potentially eligible CSE elective'),'green'):''}${off.proxy?pill('Proxy: '+semName(off.source_semester),'orange'):off.unit_id?pill(semName(off.source_semester),'green'):''}</div>${courseLinks({number:c.number,unitId:off.unit_id,sourceSemester:off.source_semester,reviewAvailable:!!(c.rating!=null&&Number(c.rating)>0)})}</div>
+      const stored=state.interests.some(i=>i.number===c.number&&c.number || (!c.number&&i.title===name));return `<div class="course-card"><div><div class="course-name">${moduleTitle({...c,title:name})}</div><div class="course-meta">${escape(c.number)} · ${formatNum(c.credits)} ECTS</div>
+        <div class="badge-group" style="margin-top:8px">${(c.coreProgrammes||[]).map(name=>pill(name)).join('')}${Object.keys(c.semesters||{}).map(term=>pill(semName(term))).join('')}${c.eligibleCoreElective?pill(tr('MSc-Core → potenzielles CSE-Elective','MSc core → potentially eligible CSE elective'),'green'):''}${off.proxy?offeringWarnings({sourceSemester:off.source_semester,semester:off.target_semester}):off.unit_id?pill(semName(off.source_semester),'green'):''}</div>${courseLinks({number:c.number,unitId:off.unit_id,sourceSemester:off.source_semester,reviewAvailable:!!(c.rating!=null&&Number(c.rating)>0)})}</div>
         <div class="stack">${button(stored?'✓ '+tr('Gemerkt','Shortlisted'):'+ '+tr('Merken','Shortlist'),'shortlist-result',`data-number="${attrs(c.number)}" ${stored?'disabled':''}`,'button')}${button(tr('Merken & zuweisen','Shortlist & assign'),'shortlist-assign',`data-number="${attrs(c.number)}"`)}${button(tr('Nur besuchen','Attend only'),'shortlist-extra',`data-number="${attrs(c.number)}"`)}</div></div>`;}).join(''):`<p class="no-results">${escape(searchState||tr('Filter wählen und Suche starten.','Choose filters and search.'))}</p>`}
     ${catalogTotal>40?`<div class="actions">${button('←','catalog-prev',catalogOffset===0?'disabled':'')}<span>${catalogOffset+1}–${catalogOffset+results.length} / ${catalogTotal}</span>${button('→','catalog-next',catalogOffset+40>=catalogTotal?'disabled':'')}</div>`:''}
     </div><div class="card"><h2 class="section-title">${tr('Spezialisierungen im Katalog','Catalogue specialisations')}</h2><p class="small muted">${tr('Ausblenden ändert weder reale Studienregeln noch gespeicherte Szenarien.','Hiding does not affect real degree rules or saved scenarios.')}</p>
@@ -380,7 +401,7 @@ function requirements() {
     <div class="grid columns-3 spaced">${requirementRows(p).map(requirementCard).join('')}</div>${allocationIssues(p)}
     <div class="card spaced"><h2 class="section-title">${tr('Auflagen – ausserhalb der 120 Master-ECTS','Admission requirements – outside the 120 MSc credits')}</h2>
       <p class="small muted">${tr('Kurse gemäss deinem Zulassungsbrief eintragen. Auflagen zählen nie zu den Master-ECTS.','Enter the courses from your admission letter. Their credits never count towards the master degree.')}</p>
-      ${admission.courses.map(c=>`<div class="course-card"><div><strong>${escape(c.title)}</strong><div class="small muted">${escape(c.number||'')} · ${formatNum(c.ects)} ${tr('Auflagen-ECTS','admission credits')}</div></div>${pill(c.status==='completed'?tr('Erfüllt','Done'):tr('Offen / geplant','Open / planned'),c.status==='completed'?'green':'orange')}</div>`).join('')||`<p class="muted small">${tr('Noch keine Auflagen erfasst.','No requirements entered yet.')}</p>`}
+      ${admission.courses.map(c=>`<div class="course-card"><div><strong>${moduleTitle(c)}</strong><div class="small muted">${escape(c.number||'')} · ${formatNum(c.ects)} ${tr('Auflagen-ECTS','admission credits')}</div></div>${pill(c.status==='completed'?tr('Erfüllt','Done'):tr('Offen / geplant','Open / planned'),c.status==='completed'?'green':'orange')}</div>`).join('')||`<p class="muted small">${tr('Noch keine Auflagen erfasst.','No requirements entered yet.')}</p>`}
       <div class="row between wrap" style="margin-top:15px"><span class="small">${admission.done}/${admission.courses.length} ${tr('Auflagen bestanden','requirements completed')}</span>${button(tr('RW-Bachelor-Kurse finden','Find RW Bachelor courses'),'browse-rw')}</div>
       <div class="line"></div><label class="check-row"><input type="checkbox" id="bsc-scientific" ${state.scientificWorksBSc?'checked':''}>${tr('Scientific Works in Mathematics/Physics bereits im Bachelor erfolgreich abgeschlossen (0 ECTS im Master).','Scientific Works in Mathematics/Physics completed during BSc (0 ECTS in MSc).')}</label>
     </div>
@@ -388,24 +409,105 @@ function requirements() {
 }
 
 function grades() {
-  return `${pageHeader(tr('Private Noten','Private grades'),tr('Noten erscheinen ausschließlich hier. Daten werden mit deinem Passwort im Browser verschlüsselt.','Grades appear only here. Data is encrypted in your browser using your password.'))}<div class="card" style="max-width:820px"><div class="row between"><h2 class="section-title">🔒 ${tr('Geschützter Notenbereich','Protected grade vault')}</h2>${gradesCache?button(tr('Sperren','Lock'),'lock-grades'):''}</div>${gradesCache?renderGradeEditor():`<p class="muted small">${tr('Passwort eingeben, um die verschlüsselten Noten zu öffnen oder erstmals anzulegen. Ohne Passwort ist keine Wiederherstellung möglich.','Enter a password to unlock or create the encrypted grades. Recovery is impossible without the password.')}</p><form id="grades-unlock-form"><div class="field"><label>${tr('Passwort','Password')}</label><input name="password" type="password" required minlength="8" autocomplete="off" placeholder="${tr('Mindestens 8 Zeichen','At least 8 characters')}"></div><div style="margin-top:13px"><button class="button" type="submit">${tr('Öffnen / erstellen','Unlock / create')}</button></div></form>`}</div>`;
+  return `${pageHeader(page==='simulation'?tr('Studiensimulation','Study simulation'):tr('Private Noten','Private grades'),tr('Noten und Simulationen bleiben im passwortverschlüsselten Notenspeicher.','Grades and simulations remain in the password-encrypted grade vault.'))}<div class="card" style="max-width:820px"><div class="row between"><h2 class="section-title">🔒 ${tr('Geschützter Notenbereich','Protected grade vault')}</h2>${gradesCache?button(tr('Sperren','Lock'),'lock-grades'):''}</div>${gradesCache?(page==='simulation'?simulationPanel():renderGradeEditor()):`<p class="muted small">${tr('Passwort eingeben, um die verschlüsselten Noten zu öffnen oder erstmals anzulegen. Ohne Passwort ist keine Wiederherstellung möglich.','Enter a password to unlock or create the encrypted grades. Recovery is impossible without the password.')}</p><form id="grades-unlock-form"><div class="field"><label>${tr('Passwort','Password')}</label><input name="password" type="password" required minlength="8" autocomplete="off" placeholder="${tr('Mindestens 8 Zeichen','At least 8 characters')}"></div><div style="margin-top:13px"><button class="button" type="submit">${tr('Öffnen / erstellen','Unlock / create')}</button></div></form>`}</div>`;
 }
 function moduleGrade(entry){return MasterPlanRules.moduleGrade(entry);}
 function gradeCategory(entry){return entry.category==='specialisation'&&entry.subtype==='seminar'?'excluded':['core','specialisation','elective','thesis'].includes(entry.category)?entry.category:'excluded';}
 function calculateFinalGrade(entries){return MasterPlanRules.calculateFinalGrade(entries,guidelines||{});}
 
-function renderGradeEditor() {
-  const entries=gradesCache.entries||[],final=calculateFinalGrade(entries),c=final.counts;
-  return `<div class="note good"><strong>${tr('Offizielle MSc-CSE-Schlussnotenformel (Guidelines Seite 10)','Official MSc CSE final grade formula (guidelines p. 10)')}</strong>
-    <p class="small">(2 × Core 1 + 2 × Core 2 + Σ 4 ${tr('Spezialisierungsnoten (je Gewicht 1)','specialisation grades (weight 1 each)')} + Σ Electives + 4 × Master Thesis) ÷ (12 + ${tr('Anzahl Electives','number of electives')})</p>
-    <p class="hint">${tr('Jede der vier Spezialisierungsvorlesungen und jedes gewählte Elective hat Gewicht 1. Kein ECTS-gewichteter Abschlussdurchschnitt.','Each of the four specialisation lectures and each included elective has weight 1. No ECTS-weighted graduation average.')}</p></div>
-    <div class="card spaced"><div class="row between"><div><h2 class="section-title">${tr('Berechnete Schlussnote','Calculated final grade')}</h2><div class="metric">${final.complete&&final.value!==null?final.value.toFixed(3):'—'}</div></div>${pill(final.complete?tr('Formel vollständig','All categories complete'):tr('Noch unvollständig','Not complete'),final.complete?'green':'orange')}</div>
-      <p class="small muted">Core: ${c.core}/2 · ${tr('Spezialisierung','Specialisation')}: ${c.specialisation}/4 · Electives: ${c.elective}/2+ · Thesis: ${c.thesis}/1</p>
-      <p class="hint">${tr('Die Schlussnote wird erst angezeigt, wenn genau zwei Core-Kurse, vier Spezialisierungsvorlesungen, mindestens zwei Electives und eine Masterarbeit markiert sind. Nicht-angerechnete Kurse bleiben ausgeschlossen.','The final grade is shown only with exactly two core grades, four specialisation lectures, at least two electives and one master thesis. Non-credit courses are excluded.')}</p></div>
-    <div class="card spaced"><h2 class="section-title">${tr('Private Modulnoten','Private course grades')}</h2><div class="table-wrap"><table><thead><tr><th>${tr('Kurs','Course')}</th><th>${tr('Kategorie','Category')}</th><th>${tr('Teilleistungen','Components')}</th><th>${tr('Modulnote','Course grade')}</th><th>${tr('Abschlussgewicht','Final weight')}</th><th></th></tr></thead><tbody>
-    ${entries.map((e,i)=>{const category=gradeCategory(e),weight={core:2,specialisation:1,elective:1,thesis:4,excluded:0}[category];return `<tr><td>${escape(e.name)}</td><td>${escape(trRole(e.category==='specialisation'&&e.subtype==='seminar'?'specialisation-seminar':category==='excluded'?'extra':category))}</td><td>${(e.parts||[]).map(x=>`${escape(x.name)}: ${formatNum(x.value)} (${formatNum(x.weight)}%)`).join('<div></div>')}</td><td>${moduleGrade(e)?.toFixed(2)||'—'}</td>
-      <td>${e.countsForFinal===false?0:weight}</td><td>${button(tr('Bearbeiten','Edit'),'grade-edit',`data-index="${i}"`)}</td></tr>`;}).join('')}
-    </tbody></table></div><div class="actions" style="margin-top:18px">${button('+ '+tr('Modulnote','Course grade'),'grade-add','','button')}${button(tr('Verschlüsselt speichern','Save encrypted'),'grade-save','','button')}</div></div>`;
+let gradeDraft=null,activeSimulation=null;
+const privatePages=['grades','simulation'];
+function privateNumber(v){return v===''?null:Number(v);}
+function gradeMetric(v){return v==null?'—':Number(v).toFixed(2);}
+function gradeCategoryChoice(e){return e.category==='specialisation'&&e.subtype==='seminar'?'specialisation-seminar':e.category;}
+function gradeFinalCard(entries,simulated=false){
+  const final=calculateFinalGrade(simulated?MasterPlanGrades.projectedEntries(entries):entries);
+  return `<div class="card spaced" id="private-final"><h2>${simulated?tr('Simulierte Gesamtnote','Simulated final grade'):tr('Gesamtnote aus echten Ergebnissen','Final grade from actual results')}</h2><strong class="metric">${final.complete?gradeMetric(final.value):'—'}</strong>
+    <p>${tr('Core-Kurse','Core courses')}: ${final.counts.core}/2 · ${tr('Spezialisierungsvorlesungen','Specialisation lectures')}: ${final.counts.specialisation}/4 · Electives: ${final.counts.elective}/2+ · ${tr('Masterarbeit','Master thesis')}: ${final.counts.thesis}/1</p>
+    <p class="hint">${tr('Gewichte: Core je 2, vier Spezialisierungsvorlesungen je 1, jedes Elective 1, Masterarbeit 4. Seminare sind ausgeschlossen. Fehlende oder nicht bestandene Leistungen ergeben keine vollständige Schlussnote.','Weights: each core 2, each of four specialisation lectures 1, each elective 1, thesis 4. Seminars are excluded. Missing or failed results do not produce a complete final grade.')}</p></div>`;
+}
+function forecastHtml(entry){
+  const f=MasterPlanGrades.forecast(entry,entry.targetGrade??4);
+  if(!f.valid)return `<p role="status">${tr('Bitte gültige Noten von 1 bis 6 und positive Gewichtungen eingeben.','Enter valid grades from 1 to 6 and positive weights.')}</p>`;
+  return `<p>${tr('Bekanntes Gewicht','Known weight')}: ${formatNum(f.knownWeight)} / ${formatNum(f.weight)} · ${tr('Schnitt bekannter Teilnoten','Average of known components')}: ${gradeMetric(f.knownAverage)}</p>
+    <p>${tr('Modulnote (nur echte Ergebnisse)','Module grade (actual results only)')}: <strong>${gradeMetric(f.value)}</strong> · ${tr('Mit Annahmen','With assumptions')}: <strong data-projected-grade>${gradeMetric(f.projected)}</strong></p>
+    <p>${tr('Möglicher Bereich für offene Leistungen (Noten 1–6)','Possible range for remaining assessments (grades 1–6)')}: ${gradeMetric(f.min)}–${gradeMetric(f.max)}</p>
+    ${f.required!=null?`<p>${tr('Benötigter Schnitt der offenen Leistungen für die Zielnote','Required average on remaining assessments for the target grade')}: <strong data-required-grade>${gradeMetric(f.required)}</strong> ${f.reachable===false?tr('(mit maximal 6 nicht erreichbar)','(not achievable with a maximum of 6)'):f.alreadySecured?tr('(auch mit Note 1 bereits gesichert)','(already secured even with grade 1)'):''}</p>`:''}
+    ${Math.abs(f.weight-100)>1e-8?`<p class="note">${tr('Die Gewichtungen werden relativ normalisiert; für Prozentangaben sollten sie zusammen 100 ergeben.','Weights are normalized relatively; percentage weights should total 100.')}</p>`:''}`;
+}
+function draftEditor(){
+  if(!gradeDraft)return '';
+  const e=gradeDraft.entry,sim=gradeDraft.kind==='simulation';
+  const courseOptions=MasterPlanGrades.scenarioCourses(actual(),state.history||[]);
+  return `<div class="card spaced" id="grade-editor"><h2>${sim?tr('Notenannahmen bearbeiten','Edit grade assumptions'):tr('Modulnote und Teilnoten bearbeiten','Edit module grade and components')}</h2>
+    <form id="grade-entry-form"><div class="filterbar">
+    ${!sim?`<label>${tr('Modul aus tatsächlichem Studium (optional)','Course from actual studies (optional)')}<select data-grade-link><option value="">${tr('Manueller Eintrag','Manual entry')}</option>${courseOptions.map(c=>`<option value="${attrs(c.id)}" ${e.courseId===c.id?'selected':''}>${escape(c.title)}</option>`).join('')}</select></label>`:''}
+    <label>${tr('Modultitel','Course title')}<input data-grade-input="name" value="${attrs(e.name||'')}" required ${sim?'readonly':''}></label>
+    <label>${tr('Kursnummer (optional)','Course number (optional)')}<input data-grade-input="number" value="${attrs(e.number||'')}" ${sim?'readonly':''}></label>
+    <label>${tr('Notenkategorie','Grade category')}<select data-grade-input="category" ${sim?'disabled':''}>${['core','specialisation','specialisation-seminar','elective','thesis','excluded'].map(r=>`<option value="${r}" ${r===gradeCategoryChoice(e)?'selected':''}>${r==='excluded'?tr('Nicht in Schlussnote','Exclude from final grade'):escape(trRole(r))}</option>`).join('')}</select></label></div>
+    <label class="check-row"><input type="checkbox" data-grade-input="countsForFinal" ${e.countsForFinal!==false?'checked':''} ${sim?'disabled':''}>${tr('Für Schlussnote auswählen','Select for final grade')}</label>
+    ${e.actualMatched?`<p class="note">${tr('Echte Ergebnisse aus dem tatsächlichen Studium werden übernommen. Bekannte Teilnoten und ihre Gewichtungen sind hier geschützt.','Actual results from real studies are inherited. Known grades and their assessment weights are protected here.')}</p>`:''}
+    <div class="table-wrap"><table><thead><tr><th>${tr('Teilleistung','Assessment')}</th><th>${tr('Gewicht (%)','Weight (%)')}</th><th>${tr('Echte Note','Actual grade')}</th><th>${tr('Annahme für offene Leistung','Assumption for pending assessment')}</th><th></th></tr></thead><tbody>
+    ${e.parts.map((p,i)=>`<tr><td><input aria-label="${tr('Bezeichnung','Name')}" data-grade-part="${i}" data-grade-input="name" value="${attrs(p.id==='exam'&&p.name==='Exam'?tr('Prüfung','Exam'):p.name)}" ${p.structureLocked?'readonly':''}></td><td><input aria-label="${tr('Gewicht','Weight')}" type="number" min="0.001" step="any" data-grade-part="${i}" data-grade-input="weight" value="${attrs(p.weight)}" ${p.structureLocked?'readonly':''}></td>
+    <td><input aria-label="${tr('Echte Note','Actual grade')}" type="number" min="1" max="6" step="any" data-grade-part="${i}" data-grade-input="value" value="${attrs(p.value??'')}" ${sim?'readonly':''}></td>
+    <td><input aria-label="${tr('Annahme','Assumption')}" type="number" min="1" max="6" step="any" data-grade-part="${i}" data-grade-input="estimate" value="${attrs(p.estimate??'')}" ${p.actualLocked||p.value!=null?'disabled':''}></td><td>${!p.structureLocked?button('×','grade-part-remove',`data-index="${i}" aria-label="${tr('Teilleistung entfernen','Remove assessment')}"`):'🔒'}</td></tr>`).join('')}</tbody></table></div>
+    ${!e.actualMatched?button('+ '+tr('Teilleistung','Assessment'),'grade-part-add'):''}
+    <div class="filterbar"><label>${tr('Additiver Notenbonus (z. B. +0,25)','Additive grade bonus (e.g. +0.25)')}<input type="number" step="any" min="-6" max="6" data-grade-input="bonus" value="${attrs(e.bonus??0)}" ${e.bonusLocked?'readonly':''}></label>
+    <label>${tr('Gewünschte Modulnote','Target module grade')}<input type="number" min="1" max="6" step="any" data-grade-input="targetGrade" value="${attrs(e.targetGrade??4)}"></label></div>
+    <p class="hint">${tr('Echte Noten nur für bereits bewertete Leistungen eintragen. Offene Noten leer lassen und separat als Annahme testen. Der Bonus wird nach dem gewichteten Durchschnitt addiert; maximal Note 6.','Enter actual grades only for assessed work. Leave pending grades blank and test them separately as assumptions. The bonus is added after the weighted average; grades are capped at 6.')}</p>
+    <div id="grade-preview" aria-live="polite">${forecastHtml(e)}</div><div class="actions"><button class="button" type="submit">${tr('Übernehmen','Apply')}</button>${button(tr('Abbrechen','Cancel'),'grade-draft-cancel')}</div></form></div>`;
+}
+function renderGradeEditor(){
+  const entries=gradesCache.entries;
+  return `${gradeFinalCard(entries)}<p class="note">${tr('Annahmen sind keine echten Ergebnisse. Alle Änderungen erst mit „Verschlüsselt speichern“ dauerhaft sichern.','Assumptions are not actual results. Save changes permanently using Save encrypted.')}</p>
+    <div class="actions">${button('+ '+tr('Modulnote','Course grade'),'grade-add','','button')}${button(tr('Verschlüsselt speichern','Save encrypted'),'grade-save','','button')}</div>
+    ${entries.map((e,i)=>`<div class="card spaced"><h3>${escape(e.name)}</h3><p>${tr('Modulnote','Module grade')}: ${gradeMetric(moduleGrade(e))} · ${tr('Prognose','Projection')}: ${gradeMetric(MasterPlanGrades.forecast(e).projected)}</p>${button(tr('Bearbeiten','Edit'),'grade-edit',`data-index="${i}"`)}${button(tr('Entfernen','Remove'),'grade-delete',`data-index="${i}"`)}</div>`).join('')}${draftEditor()}`;
+}
+function simulationEntries(s){
+  const plan=allPlans().find(p=>p.id===s.planId);if(!plan)return [];
+  return MasterPlanGrades.scenarioCourses(plan,state.history||[]).map(c=>MasterPlanGrades.simulationEntry(c,s.entries[MasterPlanGrades.key(c)],gradesCache.entries,s.planId==='actual'));
+}
+function simulationPanel(){
+  const sims=gradesCache.simulations;
+  const selected=sims.find(s=>s.id===activeSimulation)||sims[0];activeSimulation=selected?.id||null;
+  const entries=selected?simulationEntries(selected):[];
+  return `<p class="note">${tr('Simulationen sind hypothetisch und ändern weder echte Noten noch Semesterzuweisungen. Beim tatsächlichen Studienplan werden eindeutig zugeordnete echte Ergebnisse automatisch übernommen.','Simulations are hypothetical and change neither actual grades nor course allocations. Selecting actual studies automatically inherits unambiguously linked real results.')}</p>
+    <form id="simulation-create-form" class="card"><label>${tr('Neues Notenszenario','New grade scenario')}<input name="name" required maxlength="150" placeholder="${tr('z. B. Optimistisch','e.g. Optimistic')}"></label><button class="button" type="submit">${tr('Szenario erstellen','Create scenario')}</button></form>
+    <div class="actions">${button(tr('Verschlüsselt speichern','Save encrypted'),'grade-save','','button')}</div>
+    ${selected?`<div class="card spaced"><label>${tr('Notenszenario','Grade scenario')}<select id="simulation-select">${sims.map(s=>`<option value="${attrs(s.id)}" ${s.id===selected.id?'selected':''}>${escape(s.name)}</option>`).join('')}</select></label>
+    <label>${tr('Semesterplanung auswählen','Choose study plan')}<select id="simulation-plan">${!allPlans().some(p=>p.id===selected.planId)?`<option selected value="">${tr('Plan wurde entfernt – bitte auswählen','Plan was removed – choose another')}</option>`:''}${allPlans().map(p=>`<option value="${attrs(p.id)}" ${p.id===selected.planId?'selected':''}>${escape(p.name)}</option>`).join('')}</select></label>${button(tr('Szenario duplizieren','Duplicate scenario'),'simulation-duplicate')}${button(tr('Szenario löschen','Delete scenario'),'simulation-delete')}</div>
+    ${gradeFinalCard(entries,true)}
+    ${entries.map(e=>`<div class="card spaced"><h3>${escape(e.name)}</h3><p>${escape(trRole(MasterPlanRules.allocationRole({role:e.category,subtype:e.subtype})))}</p>${e.actualMatched?pill(tr('Echte Ergebnisse übernommen','Actual results inherited'),'green'):''}<p>${tr('Simulierte Modulnote','Simulated module grade')}: ${gradeMetric(MasterPlanGrades.forecast(e).projected)}</p>${button(tr('Teilnoten / Annahmen','Components / assumptions'),'simulation-edit',`data-key="${attrs(MasterPlanGrades.key({...e,id:e.courseId}))}"`)}</div>`).join('')||`<p>${tr('Dem gewählten Plan sind noch keine anrechenbaren Module zugewiesen.','The selected plan has no credit-bearing courses assigned yet.')}</p>`}${draftEditor()}`:''}`;
+}
+async function privateAction(action,element){
+  if(action==='grade-add'||action==='grade-edit'){
+    const index=action==='grade-edit'?Number(element.dataset.index):-1;
+    gradeDraft={kind:'real',index,entry:index>=0?structuredClone(gradesCache.entries[index]):{name:'',category:'core',countsForFinal:true,bonus:0,bonusKnown:false,parts:[{id:id(),name:tr('Zwischenprüfung','Midterm'),weight:20,value:null,estimate:null},{id:id(),name:tr('Schlussprüfung','Final exam'),weight:80,value:null,estimate:null}]}};
+  }else if(action==='grade-draft-cancel'){gradeDraft=null;}
+  else if(action==='grade-part-add'){gradeDraft.entry.parts.push({id:id(),name:tr('Neue Teilleistung','New assessment'),weight:10,value:null,estimate:null});}
+  else if(action==='grade-part-remove'){gradeDraft.entry.parts.splice(Number(element.dataset.index),1);}
+  else if(action==='grade-delete'){gradesCache.entries.splice(Number(element.dataset.index),1);gradeDraft=null;}
+  else if(action==='simulation-edit'){
+    const s=gradesCache.simulations.find(s=>s.id===activeSimulation),entry=simulationEntries(s).find(e=>MasterPlanGrades.key({...e,id:e.courseId})===element.dataset.key);
+    gradeDraft={kind:'simulation',scenarioId:s.id,key:element.dataset.key,entry:structuredClone(entry)};
+  }else if(action==='simulation-duplicate'){
+    const s=gradesCache.simulations.find(s=>s.id===activeSimulation),copy=structuredClone(s);copy.id=id();copy.name+=' '+tr('(Kopie)','(copy)');gradesCache.simulations.push(copy);activeSimulation=copy.id;gradeDraft=null;
+  }else if(action==='simulation-delete'){gradesCache.simulations=gradesCache.simulations.filter(s=>s.id!==activeSimulation);activeSimulation=null;gradeDraft=null;}
+  render();$('#grade-editor')?.scrollIntoView({block:'start'});
+}
+function applyGradeDraft(){
+  const e=gradeDraft.entry;
+  if(!e.name.trim()||!MasterPlanGrades.forecast(e).valid)throw Error(tr('Bitte Titel, Noten und Gewichte prüfen.','Check title, grades and weights.'));
+  if(gradeDraft.kind==='real'){
+    const entry=structuredClone(e);entry.parts=entry.parts.map((p,i)=>({...p,id:p.id||`part-${i}`}));
+    if(gradeDraft.index<0)gradesCache.entries.push(entry);else gradesCache.entries[gradeDraft.index]=entry;
+  }else{
+    const s=gradesCache.simulations.find(s=>s.id===gradeDraft.scenarioId);
+    // Persist assumptions only; actual marks are read afresh from the real vault on every render.
+    const entry=structuredClone(e);entry.parts=entry.parts.map(p=>({...p,value:null,actualLocked:undefined,structureLocked:undefined}));
+    delete entry.actualMatched;delete entry.bonusLocked;s.entries[gradeDraft.key]=entry;
+  }
+  gradeDraft=null;render();notify(tr('Im Notenspeicher vorgemerkt – bitte verschlüsselt speichern.','Updated in memory – please save encrypted.'));
 }
 
 function settings() {
@@ -423,39 +525,47 @@ function settings() {
 }
 
 function fixed(c,p) {return c.locked || p.lockedSemesters.includes(c.semester);}
-function askCourse(existing=null,semesterOverride=null,planKey=state.activePlan) {
-  const p=getPlan(planKey); if(existing&&fixed(existing,p)){notify(tr('Zuerst Kurs/Semester entsperren.','Unlock course/semester first.'));return;}
-  const title=prompt(tr('Modultitel','Course title'),existing?.title||''); if(title===null||!title.trim())return;
-  const number=prompt(tr('Kursnummer (optional)','Course number (optional)'),existing?.number||'');if(number===null)return;
-  const sem=prompt(tr('Semester: JJJJS für FS, JJJJW für HS','Semester: YYYYS for spring, YYYYW for autumn'),existing?.semester||semesterOverride||p.semesters[0]);if(sem===null)return;
-  if(!/^\d{4}[SW]$/.test(sem)){notify(tr('Ungültiges Semesterformat, z. B. 2027S','Invalid semester, e.g. 2027S'));return;}
-  if(p.lockedSemesters.includes(sem)){notify(tr('Das Zielsemester ist fixiert.','Target semester is locked.'));return;}
-  if(existing?.unitId&&sem!==existing.sourceSemester&&!existing.offerings?.[sem])return notify(tr('Kein bestätigtes Angebot für dieses Semester.','No confirmed offering for this semester.'));
-  const ects=prompt('ECTS',String(existing?.ects??0));if(ects===null)return;
-  if(!Number.isFinite(Number(ects))||Number(ects)<0||Number(ects)>40){notify(tr('Ungültige ECTS','Invalid ECTS'));return;}
-  const role=prompt(`${tr('Rolle','Role')}: ${roleList.join(', ')}`,existing?MasterPlanRules.allocationRole(existing):'extra');if(role===null)return;
-  if(!roleList.includes(role)){notify(tr('Unbekannte Rolle','Unknown role'));return;}
-  const status=prompt(`${tr('Status','Status')}: interested, planned, enrolled, completed`,existing?.status||'planned');if(status===null)return;
-  if(!['interested','planned','enrolled','completed'].includes(status)){notify(tr('Ungültiger Status','Invalid status'));return;}
-  const subtype=role==='specialisation-seminar'?'seminar':role==='specialisation'?prompt(tr('Art: lecture oder seminar','Type: lecture or seminar'),existing?.subtype||'lecture'):null;
-  if(role==='specialisation'&&!['lecture','seminar'].includes(subtype))return notify(tr('Ungültige Spezialisierungsart.','Invalid specialisation type.'));
-  const field=['specialisation','specialisation-seminar'].includes(role)?prompt(tr('Spezialisierungsgebiet (optional)','Specialisation field (optional)'),existing?.specialisation||p.specialisation||''):'';
-  if(field===null)return;
-  const usedForBSc=confirm(tr('Wurden diese Credits bereits für den Bachelorabschluss verwendet?','Were these credits already used for your Bachelor degree?'));
-  const linked=existing?.offerings?.[sem];
-  const record={...(existing||{}),...(linked?{unitId:linked,sourceSemester:sem,proxy:false}:{}),id:existing?.id||id(),title:title.trim(),number:number||'',semester:sem,ects:Number(ects),...MasterPlanRules.allocationCategory(role),status,
-    subtype:subtype||undefined,specialisation:field||undefined,usedForBSc,events:existing?.events||[]};
-  return save(s=>{
-    const pl=editPlan(s,p.id);
-    if(pl.courses.some(c=>c.id!==record.id&&record.number&&String(c.number||'').trim().toUpperCase()===record.number.trim().toUpperCase()&&c.semester===sem))throw Error(tr('Kurs bereits im Semester zugeordnet.','Course already allocated to this semester.'));
-    if(!pl.semesters.includes(sem))pl.semesters.push(sem);pl.semesters.sort();
-    if(existing)pl.courses=pl.courses.map(c=>c.id===existing.id?record:c);else pl.courses.push(record);
-    if(p.id!=='actual')return;
-    const index=s.history.findIndex(c=>c.id===record.id);
-    if(status==='completed'){if(index>=0)s.history[index]={...record,locked:true};else if(!s.history.some(c=>MasterPlanRules.allCourses({courses:[record]},[c]).length===1))s.history.push({...record,locked:true});}
-    else if(index>=0)s.history.splice(index,1);
-  });
+let moduleDraft=null;
+function moduleEditor(){
+  if(!moduleDraft)return '';
+  const c=moduleDraft.entry,p=getPlan(moduleDraft.planId);
+  return `<div class="card spaced" id="module-editor"><h2>${tr('Modul bearbeiten','Edit course')}</h2><form id="module-edit-form">
+    <p>${escape(p.name)}</p><div class="filterbar">
+    <label>${tr('Modultitel','Course title')}<input name="title" value="${attrs(c.title||'')}" maxlength="250" required></label>
+    <label>${tr('Kursnummer (optional)','Course number (optional)')}<input name="number" value="${attrs(c.number||'')}" maxlength="60" ${c.unitId?'readonly':''}></label>
+    <label>ECTS<input name="ects" type="number" min="0" max="40" step="any" value="${attrs(c.ects??0)}" required></label>
+    <label>${tr('Semester','Semester')}<select name="semester">${[...new Set([...p.semesters,...recentTerms(),c.semester])].filter(Boolean).sort().map(t=>`<option value="${t}" ${t===c.semester?'selected':''}>${semName(t)}</option>`).join('')}</select></label>
+    <label>${tr('Anrechnungskategorie','Credit category')}<select name="role">${roleList.map(r=>`<option value="${r}" ${r===MasterPlanRules.allocationRole(c)?'selected':''}>${escape(trRole(r))}</option>`).join('')}</select></label>
+    <label>${tr('Status','Status')}<select name="status">${[['interested',tr('Interessiert','Interested')],['planned',tr('Geplant','Planned')],['enrolled',tr('Belegt','Enrolled')],['completed',tr('Abgeschlossen','Completed')]].map(([value,label])=>`<option value="${value}" ${value===c.status?'selected':''}>${label}</option>`).join('')}</select></label>
+    <label>${tr('Spezialisierungsgebiet (optional)','Specialisation field (optional)')}<input name="specialisation" list="module-specialisation-fields" value="${attrs(c.specialisation||p.specialisation||'')}" maxlength="150"><datalist id="module-specialisation-fields">${specialisations.map(x=>`<option value="${attrs(x)}">`).join('')}</datalist></label></div>
+    <label class="check-row"><input name="usedForBSc" type="checkbox" ${c.usedForBSc?'checked':''}>${tr('Credits bereits für den Bachelor verwendet','Credits already used for the Bachelor degree')}</label>
+    ${courseLinks(c)}${offeringWarnings(c)}
+    <div class="actions"><button type="submit" class="button">${tr('Speichern','Save')}</button>${button(tr('Abbrechen','Cancel'),'module-editor-cancel')}</div></form></div>`;
 }
+function askCourse(existing=null,semesterOverride=null,planKey=state.activePlan){
+  const p=getPlan(planKey);if(existing&&fixed(existing,p))return notify(tr('Zuerst entsperren.','Unlock first.'));
+  moduleDraft={planId:p.id,originalId:existing?.id||null,entry:existing?structuredClone(existing):{id:id(),title:'',number:'',semester:semesterOverride||p.semesters[0],ects:0,role:'extra',status:'planned',events:[],locked:false}};
+  render();$('#module-editor')?.scrollIntoView({block:'center'});$('#module-edit-form [name="title"]')?.focus();
+}
+async function applyModuleEditor(form){
+  const draft=moduleDraft,base=draft.entry,term=formVal(form,'semester'),role=formVal(form,'role');
+  const record={...base,title:formVal(form,'title'),number:formVal(form,'number'),ects:Number(formVal(form,'ects')),semester:term,status:formVal(form,'status'),
+    ...MasterPlanRules.allocationCategory(role),specialisation:formVal(form,'specialisation'),usedForBSc:form.elements.namedItem('usedForBSc').checked,
+    ...MasterPlanRules.resolveOffering(base,term),events:term===base.semester?base.events:[]};
+  if(await save(s=>{
+    const p=editPlan(s,draft.planId),original=p.courses.find(c=>c.id===draft.originalId);
+    if((original&&fixed(original,p))||p.lockedSemesters.includes(term))throw Error(tr('Zuerst entsperren.','Unlock first.'));
+    if(p.courses.some(c=>c.id!==record.id&&record.number&&String(c.number||'').trim().toUpperCase()===record.number.trim().toUpperCase()&&c.semester===term))throw Error(tr('Modul ist bereits zugeordnet.','Course already allocated.'));
+    if(!p.semesters.includes(term)){p.semesters.push(term);p.semesters.sort();}
+    if(original)p.courses=p.courses.map(c=>c.id===original.id?record:c);else p.courses.push(record);
+    if(p.id==='actual'){
+      const index=s.history.findIndex(c=>c.id===record.id);
+      if(record.status==='completed'){if(index>=0)s.history[index]={...record,locked:true};else if(!s.history.some(c=>MasterPlanRules.allCourses({courses:[record]},[c]).length===1))s.history.push({...record,locked:true});}
+      else if(index>=0)s.history.splice(index,1);
+    }
+  })){moduleDraft=null;render();}
+}
+
 function makeFromSearch(number,extra) {
   const result=results.find(x=>x.number===number);if(!result)return;
   const p=plan(), wanted=searchParams.semester!=='recent'?searchParams.semester:p.semesters[0];if(p.lockedSemesters.includes(wanted)){notify(tr('Semester ist fixiert.','Semester is locked.'));return;}
@@ -478,6 +588,12 @@ function editEvents(course,planKey=state.activePlan) {
 function formVal(form,name){return new FormData(form).get(name)?.toString().trim()||'';}
 async function executeAction(action,element) {
   const p=getPlan(element.dataset.planId||state.activePlan), cid=element.dataset.id, course=p.courses.find(x=>x.id===cid);
+  if(action==='module-editor-cancel'){moduleDraft=null;render();return;}
+  if(action==='course-details'){detailsBack=page;detailCourse={title:element.dataset.title,number:element.dataset.number,unitId:element.dataset.unitId?Number(element.dataset.unitId):null,sourceSemester:element.dataset.sourceSemester};changePage('course-details');await loadCourseDetails();return;}
+  if(action==='close-details'){changePage(detailsBack);return;}
+  if(action==='retry-details'){unitDetailsCache.delete(String(detailCourse.unitId));await loadCourseDetails();return;}
+  if(action==='choose-schedule-module'){const form=$('#event-form');if(form&&course){form.elements.namedItem('course').value=course.id;$('#manual-vvz-link').innerHTML=courseLinks(course);document.querySelectorAll('[data-schedule-course]').forEach(e=>e.setAttribute('aria-pressed',String(e.dataset.scheduleCourse===course.id)));}return;}
+  if(action==='place-slot'){fillScheduleSlot(element.dataset.day,element.dataset.start);return;}
   if(action==='shortlist-assign'){
     const result=results.find(c=>c.number===element.dataset.number);
     await executeAction('shortlist-result',element);
@@ -506,7 +622,7 @@ async function executeAction(action,element) {
   if(action==='catalog-next')return runCatalogSearch(catalogOffset+40);
   if(action==='browse-rw'){searchParams={...searchParams,programme:'cse-bsc',category:'requirement'};changePage('catalog');return;}
   if(action==='browse-eligible-core') {searchParams={...searchParams,programme:'eligible-core-all',category:'eligible-core'};changePage('catalog');return;}
-  if(action==='shortlist-result'||action==='shortlist-extra'){const c=results.find(x=>x.number===element.dataset.number);if(!c)return;const name=state.language==='en'?(c.title_english||c.title):(c.title||c.title_english);const o=c.offering||{};return save(s=>{if(s.interests.some(x=>x.number===c.number))return;s.interests.push({id:id(),number:c.number,title:name||c.number,ects:safe(c.credits),suggestedRole:action==='shortlist-extra'?'extra':searchParams.category==='requirement'?'requirement':searchParams.category==='core'?'core':searchParams.category==='specialisation'?(/\bseminar\b/i.test(`${c.title||''} ${c.title_english||''}`)?'specialisation-seminar':'specialisation'):searchParams.category==='case'?'case':searchParams.category==='project'?'project':searchParams.category==='sip'?'sip':searchParams.category==='thesis'?'thesis':searchParams.category==='scientific'?'scientific':'elective',offerings:Object.fromEntries(Object.entries(c.semesters||{}).filter(([term])=>term>=recentTerms()[0])),unitId:o.unit_id||null,sourceSemester:o.source_semester||null,reviewAvailable:c.rating!=null&&Number(c.rating)>0});});}
+  if(action==='shortlist-result'||action==='shortlist-extra'){const c=results.find(x=>x.number===element.dataset.number);if(!c)return;const name=state.language==='en'?(c.title_english||c.title):(c.title||c.title_english);const o=c.offering||{};return save(s=>{if(s.interests.some(x=>x.number===c.number))return;s.interests.push({id:id(),number:c.number,title:name||c.number,ects:safe(c.credits),suggestedRole:action==='shortlist-extra'?'extra':searchParams.category==='requirement'?'requirement':searchParams.category==='core'?'core':searchParams.category==='specialisation'?(/\bseminar\b/i.test(`${c.title||''} ${c.title_english||''}`)?'specialisation-seminar':'specialisation'):searchParams.category==='case'?'case':searchParams.category==='project'?'project':searchParams.category==='sip'?'sip':searchParams.category==='thesis'?'thesis':searchParams.category==='scientific'?'scientific':'elective',offerings:c.semesters||{},unitId:o.unit_id||null,sourceSemester:o.source_semester||null,reviewAvailable:c.rating!=null&&Number(c.rating)>0});});}
   if(action==='manual-interest'){const title=prompt(tr('Modultitel','Course title'));if(!title?.trim())return;const number=prompt(tr('Kursnummer (optional)','Course number (optional)'),'')||'';return save(s=>s.interests.push({id:id(),number,title:title.trim(),ects:0,suggestedRole:'extra',offerings:{}}));}
   if(action==='remove-interest')return save(s=>{s.interests=s.interests.filter(x=>x.id!==cid);});
   if(action==='focus-assign'){changePage('semesters');const form=$('#assign-course-form');if(element.dataset.planId)form.elements.namedItem('plan').value=element.dataset.planId;if(element.dataset.sem)form.elements.namedItem('semester').value=element.dataset.sem;if(element.dataset.interestId)selectedInterests.add(element.dataset.interestId);refreshAssignmentChoices();form.scrollIntoView({behavior:'smooth',block:'center'});return;}
@@ -529,15 +645,15 @@ async function executeAction(action,element) {
   if(action==='lock-semester'){const sem=element.dataset.sem;return save(s=>{const list=editPlan(s,p.id).lockedSemesters;const i=list.indexOf(sem);if(i>=0)list.splice(i,1);else list.push(sem);});}
   if(action==='lock-course'){if(p.lockedSemesters.includes(course.semester))return notify(tr('Semester ist fixiert.','Semester locked.'));return save(s=>{editPlan(s,p.id).courses.find(c=>c.id===cid).locked=!course.locked;});}
   if(action==='manual-course')return askCourse(null,element.dataset.sem,element.dataset.planId||p.id);
-  if(action==='edit-course')return askCourse(course,null,p.id);
+  if(action==='edit-course'){if(!course)return notify(tr('Abgeschlossene Historie ist schreibgeschützt.','Completed history is read-only.'));return askCourse(course,null,p.id);}
   if(action==='add-result'||action==='add-extra')return makeFromSearch(element.dataset.number,action==='add-extra');
   if(action==='add-event'){changePage('schedule');return;}
   if(action==='edit-events')return editEvents(course,p.id);
   if(action==='check-dump'){try{dumpStatus=await request('/api/vvz/dump/check','POST',{});render();refreshDumpStatus();notify(tr('VVZ-Abgleich gestartet.','VVZ sync started.'));}catch(e){notify(e.message);}return;}
   if(action==='move-folder'||action==='open-folder'){const folder=prompt(tr('Absoluter lokaler Ordnerpfad (kann im Cloud-Sync-Ordner liegen)','Absolute local folder path (may reside in cloud-synced folder)'),$('#folder-label')?.textContent||'');if(!folder)return;try{const x=await request('/api/storage','POST',{mode:action==='move-folder'?'move':'open',folder});state=x.state;notify(tr('Datenordner aktualisiert.','Data folder updated.'));render();loadFolder();}catch(e){notify(e.message);}return;}
   if(action==='export-data'){const b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(b),a=document.createElement('a');a.href=url;a.download='masterplan-export.json';a.click();URL.revokeObjectURL(url);return;}
-  if(action==='lock-grades'){gradesCache=null;gradesPassword=null;return render();}
-  if(action==='grade-add'||action==='grade-edit'){const index=action==='grade-edit'?Number(element.dataset.index):-1;const prev=index>=0?gradesCache.entries[index]:null;const name=prompt(tr('Modulname','Course name'),prev?.name||'');if(!name)return;const old=(prev?.parts||[]).map(p=>`${p.name},${p.value},${p.weight}`).join('\n');const raw=prompt(tr('Teilleistungen: Name, Note, Gewicht in % (eine Zeile pro Teilleistung)','Components: name, grade, weight in % (one line each)'),old||'Exam,5.0,100');if(raw===null)return;const parts=[];for(const line of raw.split('\n')){const [name,value,weight]=line.split(',').map(x=>x.trim());if(!name||safe(value)<1||safe(value)>6||safe(weight)<=0)return notify(tr('Ungültige Note (1–6) oder Gewichtung.','Invalid grade (1–6) or weight.'));parts.push({name,value:Number(value),weight:Number(weight)});}const category=prompt(tr('Abschlusskategorie: core, specialisation, specialisation-seminar (Spezialisierungsseminar), elective, thesis oder excluded','Graduation category: core, specialisation, specialisation-seminar (Specialisation seminar), elective, thesis or excluded'),prev?.category==='specialisation'&&prev?.subtype==='seminar'?'specialisation-seminar':prev?.category||'core');if(category===null)return;if(!['core','specialisation','specialisation-seminar','elective','thesis','excluded'].includes(category))return notify(tr('Ungültige Abschlusskategorie.','Invalid graduation category.'));const subtype=category==='specialisation-seminar'?'seminar':category==='specialisation'?prompt(tr('Art: lecture oder seminar','Type: lecture or seminar'),prev?.subtype||'lecture'):null;if(category==='specialisation'&&!['lecture','seminar'].includes(subtype))return notify(tr('Ungültige Spezialisierungsart.','Invalid specialisation type.'));const record={...prev,name,parts,category:category==='specialisation-seminar'?'specialisation':category,subtype:subtype||undefined,countsForFinal:category!=='excluded'&&subtype!=='seminar'};if(index<0)gradesCache.entries.push(record);else gradesCache.entries[index]=record;return render();}
+  if(action==='lock-grades'){gradeDraft=null;gradesCache=null;gradesPassword=null;return render();}
+  if(['grade-add','grade-edit','grade-delete','grade-draft-cancel','grade-part-add','grade-part-remove','simulation-edit','simulation-duplicate','simulation-delete'].includes(action))return privateAction(action,element);
   if(action==='grade-save'){try{await saveGrades();notify(tr('Noten verschlüsselt gespeichert.','Grades encrypted and saved.'));}catch(e){notify(e.message);}return;}
   if(action==='set-de'||action==='set-en')return save(s=>s.language=action==='set-de'?'de':'en');
   if(action==='set-light'||action==='set-dark')return save(s=>s.theme=action==='set-light'?'light':'dark');
@@ -560,8 +676,10 @@ async function loadFolder(){try{const x=await request('/api/storage');const e=$(
 function base64(bytes){let b='';for(const x of bytes)b+=String.fromCharCode(x);return btoa(b);}
 function unbase64(x){return Uint8Array.from(atob(x),x=>x.charCodeAt(0));}
 async function gradeKey(password,salt){const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
-async function unlockGrades(password){if(!globalThis.crypto?.subtle)throw Error(tr('Verschlüsselung benötigt einen sicheren Browserkontext.','Encryption requires a secure browser context.'));const payload=(await request('/api/grades')).encrypted;if(!payload){gradesCache={entries:[]};gradesPassword=password;return;}const salt=unbase64(payload.salt),iv=unbase64(payload.iv);const key=await gradeKey(password,salt);let plaintext;try{plaintext=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,unbase64(payload.ciphertext));}catch{throw Error(tr('Falsches Passwort oder beschädigte Daten.','Wrong password or corrupt data.'));}const decoded=JSON.parse(new TextDecoder().decode(plaintext));if(!Array.isArray(decoded.entries))throw Error('Invalid grades data');gradesCache=decoded;gradesPassword=password;}
-async function saveGrades(){if(!gradesCache||!gradesPassword)throw Error('Vault locked');const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await gradeKey(gradesPassword,salt);const plaintext=new TextEncoder().encode(JSON.stringify(gradesCache));const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plaintext);await request('/api/grades','POST',{salt:base64(salt),iv:base64(iv),ciphertext:base64(new Uint8Array(ciphertext))});}
+async function unlockGrades(password){if(!globalThis.crypto?.subtle)throw Error(tr('Verschlüsselung benötigt einen sicheren Browserkontext.','Encryption requires a secure browser context.'));const payload=(await request('/api/grades')).encrypted;if(!payload){gradesCache={entries:[],simulations:[]};gradesPassword=password;return;}const salt=unbase64(payload.salt),iv=unbase64(payload.iv);const key=await gradeKey(password,salt);let plaintext;try{plaintext=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,unbase64(payload.ciphertext));}catch{throw Error(tr('Falsches Passwort oder beschädigte Daten.','Wrong password or corrupt data.'));}const decoded=JSON.parse(new TextDecoder().decode(plaintext));gradesCache=MasterPlanGrades.validateVault(decoded);gradesPassword=password;}
+let gradeSaveQueue=Promise.resolve();
+function saveGrades(){if(!gradesCache||!gradesPassword)return Promise.reject(Error('Vault locked'));const snapshot=structuredClone(gradesCache),password=gradesPassword;const task=()=>persistGrades(snapshot,password);gradeSaveQueue=gradeSaveQueue.then(task,task);return gradeSaveQueue;}
+async function persistGrades(snapshot,password){const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await gradeKey(password,salt);const plaintext=new TextEncoder().encode(JSON.stringify(snapshot));const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plaintext);await request('/api/grades','POST',{salt:base64(salt),iv:base64(iv),ciphertext:base64(new Uint8Array(ciphertext))});}
 
 addEventListener('click',async event=>{const nav=event.target.closest('[data-nav]');if(nav)return changePage(nav.dataset.nav);const action=event.target.closest('[data-action]');if(action){event.preventDefault();try{await executeAction(action.dataset.action,action);}catch(e){notify(e.message);}return;}});
 addEventListener('change',async event=>{const e=event.target;
@@ -577,7 +695,7 @@ addEventListener('change',async event=>{const e=event.target;
     if(e.name!=='q')render();return;
   }
 if(e.id==='compare-left-plan'||e.id==='compare-right-plan'){const side=e.id==='compare-left-plan'?'left':'right';comparison[side+'Plan']=e.value;const selected=getPlan(e.value);comparison[side+'Semester']=selected?.semesters.includes(comparison[side+'Semester'])?comparison[side+'Semester']:(selected?.semesters.includes(comparison[side==='left'?'rightSemester':'leftSemester'])?comparison[side==='left'?'rightSemester':'leftSemester']:selected?.semesters[0]||null);render();return;}if(e.id==='compare-left-sem'||e.id==='compare-right-sem'){comparison[e.id==='compare-left-sem'?'leftSemester':'rightSemester']=e.value;render();return;}if(e.dataset.change==='active-plan'){await save(s=>s.activePlan=e.value);return;}if(e.id==='schedule-sem'){schedule.current=e.value;assignmentContext=null;render();void syncMeetingOptions();return;}if(e.id==='scenario-specialisation'){await save(s=>{editPlan(s,s.activePlan).specialisation=e.value;});return;}if(e.id==='bsc-scientific'){await save(s=>{s.scientificWorksBSc=e.checked;});return;}if(e.dataset.spec){await save(s=>{const i=s.selectedSpecialisations.indexOf(e.dataset.spec);if(e.checked&&i<0)s.selectedSpecialisations.push(e.dataset.spec);if(!e.checked&&i>=0)s.selectedSpecialisations.splice(i,1);});return;}if(e.id==='import-file'&&e.files?.[0]){try{if(e.files[0].size>2_000_000)throw Error('File too large');const value=JSON.parse(await e.files[0].text());if(!confirm(tr('Bestehende Pläne ersetzen?','Replace existing plans?')))return;state=await request('/api/import','POST',value);render();notify(tr('Importiert.','Imported.'));}catch(err){notify(err.message);}}});
-addEventListener('submit',async event=>{const form=event.target;if(form.id==='assign-course-form'){event.preventDefault();return;}if(form.id==='search-form'){event.preventDefault();searchParams={q:formVal(form,'q'),programme:formVal(form,'programme'),category:formVal(form,'category'),semester:[formVal(form,'semester'),formVal(form,'semester2')].filter((v,i,a)=>v&&a.indexOf(v)===i).join(',')};await runCatalogSearch();return;}if(form.id==='event-form'){event.preventDefault();const p=plan(),selected=formVal(form,'course'),c=p.courses.find(x=>x.id===selected);if(!c)return notify(tr('Kurs auswählen.','Choose course.'));if(fixed(c,p))return notify(tr('Kurs oder Semester fixiert.','Course or semester locked.'));const day=Number(formVal(form,'day')),start=formVal(form,'start'),end=formVal(form,'end');if(!(day>=0&&day<=6&&/^\d{2}:\d{2}$/.test(start)&&/^\d{2}:\d{2}$/.test(end)&&start<end))return notify(tr('Ungültiger Termin.','Invalid time.'));await save(s=>{editPlan(s,p.id).courses.find(x=>x.id===c.id).events.push({day,start,end,building:formVal(form,'building'),floor:formVal(form,'floor'),room:formVal(form,'room'),source:'manual'});});return;}if(form.id==='grades-unlock-form'){event.preventDefault();const password=formVal(form,'password');try{await unlockGrades(password);render();}catch(e){notify(e.message);}return;}});
+addEventListener('submit',async event=>{const form=event.target;if(form.id==='module-edit-form'){event.preventDefault();await applyModuleEditor(form);return;}if(form.id==='assign-course-form'){event.preventDefault();return;}if(form.id==='search-form'){event.preventDefault();searchParams={q:formVal(form,'q'),programme:formVal(form,'programme'),category:formVal(form,'category'),semester:[formVal(form,'semester'),formVal(form,'semester2')].filter((v,i,a)=>v&&a.indexOf(v)===i).join(',')};await runCatalogSearch();return;}if(form.id==='event-form'){event.preventDefault();const p=plan(),selected=formVal(form,'course'),c=p.courses.find(x=>x.id===selected);if(!c)return notify(tr('Kurs auswählen.','Choose course.'));if(fixed(c,p))return notify(tr('Kurs oder Semester fixiert.','Course or semester locked.'));const day=Number(formVal(form,'day')),start=formVal(form,'start'),end=formVal(form,'end');if(!(day>=0&&day<=6&&/^\d{2}:\d{2}$/.test(start)&&/^\d{2}:\d{2}$/.test(end)&&start<end))return notify(tr('Ungültiger Termin.','Invalid time.'));await save(s=>{editPlan(s,p.id).courses.find(x=>x.id===c.id).events.push({day,start,end,building:formVal(form,'building'),floor:formVal(form,'floor'),room:formVal(form,'room'),source:'manual'});});return;}if(form.id==='grades-unlock-form'){event.preventDefault();const password=formVal(form,'password');try{await unlockGrades(password);render();}catch(e){notify(e.message);}return;}});
 $('#lang-toggle').addEventListener('click',()=>save(s=>s.language=s.language==='de'?'en':'de'));
 $('#theme-toggle').addEventListener('click',()=>save(s=>s.theme=s.theme==='light'?'dark':'light'));
 $('#menu-toggle').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
@@ -586,7 +704,7 @@ $('#menu-toggle').addEventListener('click',()=>$('#sidebar').classList.toggle('o
 addEventListener('input',event=>{if(event.target.form?.id==='assign-course-form'&&event.target.name==='filter')refreshAssignmentChoices();});
 let draggedAllocation=null;
 addEventListener('dragstart',event=>{
-  const card=event.target.closest('[data-drag-course]');if(!card||card.draggable!==true){event.preventDefault();return;}
+  if(event.target.closest('[data-schedule-course]'))return;const card=event.target.closest('[data-drag-course]');if(!card||card.draggable!==true){event.preventDefault();return;}
   draggedAllocation={planId:card.dataset.dragPlan,courseId:card.dataset.dragCourse};
   event.dataTransfer.setData('application/x-masterplan-course',JSON.stringify(draggedAllocation));event.dataTransfer.effectAllowed='move';
 });
@@ -599,4 +717,45 @@ addEventListener('drop',async event=>{
   const p=getPlan(source.planId),c=p.courses.find(c=>c.id===source.courseId);
   if(c&&source.planId===target.dataset.dropPlan&&c.semester===target.dataset.dropSem)return;
   await save(s=>MasterPlanRules.moveAllocation(s,source.planId,source.courseId,target.dataset.dropPlan,target.dataset.dropSem));
+});
+
+function fillScheduleSlot(day,start,courseId=null){
+  const form=$('#event-form');if(!form)return notify(tr('Zuerst ein Modul diesem Semester zuweisen.','Assign a module to this semester first.'));
+  if(courseId)form.elements.namedItem('course').value=courseId;
+  const course=plan().courses.find(c=>c.id===formVal(form,'course'));
+  if(!course||course.semester!==schedule.current||fixed(course,plan()))return notify(tr('Modul nicht verfügbar oder gesperrt.','Module unavailable or locked.'));
+  form.elements.namedItem('day').value=day;form.elements.namedItem('start').value=start;
+  form.elements.namedItem('end').value=`${String(Math.min(23,Number(start.slice(0,2))+1)).padStart(2,'0')}:${start.slice(3)}`;
+  $('#manual-vvz-link').innerHTML=courseLinks(course);form.scrollIntoView({block:'center',behavior:'smooth'});form.elements.namedItem('start').focus();
+}
+let draggedScheduleCourse=null;
+addEventListener('dragstart',event=>{const item=event.target.closest('[data-schedule-course]');if(!item)return;if(!item.draggable){event.preventDefault();return;}draggedScheduleCourse=item.dataset.scheduleCourse;event.dataTransfer.setData('application/x-masterplan-meeting',draggedScheduleCourse);event.dataTransfer.effectAllowed='copy';});
+addEventListener('dragover',event=>{if(draggedScheduleCourse&&event.target.closest('.daycell')){event.preventDefault();event.dataTransfer.dropEffect='copy';}});
+addEventListener('drop',event=>{const cell=event.target.closest('.daycell');if(!cell||!draggedScheduleCourse)return;event.preventDefault();fillScheduleSlot(cell.dataset.day,cell.dataset.start,draggedScheduleCourse);draggedScheduleCourse=null;});
+addEventListener('dragend',()=>draggedScheduleCourse=null);
+addEventListener('keydown',event=>{if((event.key==='Enter'||event.key===' ')&&event.target.matches('.daycell')){event.preventDefault();fillScheduleSlot(event.target.dataset.day,event.target.dataset.start);}});
+
+addEventListener('input',event=>{
+  const e=event.target;if(!e.matches('[data-grade-input]')||!gradeDraft)return;
+  const field=e.dataset.gradeInput,index=e.dataset.gradePart;
+  if(index!=null){const part=gradeDraft.entry.parts[Number(index)];if(!part)return;
+    if(gradeDraft.kind==='simulation'&&(field==='value'||part.structureLocked&&['name','weight'].includes(field)||part.actualLocked))return;
+    part[field]=['value','estimate','weight'].includes(field)?privateNumber(e.value):e.value;
+    if(field==='value'){const estimate=e.closest('tr').querySelector('[data-grade-input="estimate"]');if(estimate)estimate.disabled=part.value!=null;}
+  }else if(field==='category'){const category=MasterPlanRules.allocationCategory(e.value);gradeDraft.entry.category=category.role;gradeDraft.entry.subtype=category.subtype;gradeDraft.entry.countsForFinal=e.value!=='excluded'&&e.value!=='specialisation-seminar';}
+  else if(field==='countsForFinal')gradeDraft.entry.countsForFinal=e.checked;
+  else if(field==='bonus'&&gradeDraft.entry.bonusLocked)return;
+  else {gradeDraft.entry[field]=['bonus','targetGrade'].includes(field)?privateNumber(e.value):e.value;if(field==='bonus'&&gradeDraft.kind==='real')gradeDraft.entry.bonusKnown=true;}
+  const preview=$('#grade-preview');if(preview)preview.innerHTML=forecastHtml(gradeDraft.entry);
+});
+addEventListener('change',event=>{
+  const e=event.target;
+  if(e.matches('[data-grade-link]')&&gradeDraft){const c=allCourses(actual()).find(c=>c.id===e.value);if(c){gradeDraft.entry={...gradeDraft.entry,...MasterPlanGrades.baseEntry(c),parts:gradeDraft.entry.parts,bonus:gradeDraft.entry.bonus??0};render();}else{delete gradeDraft.entry.courseId;delete gradeDraft.entry.number;}}
+  if(e.id==='simulation-select'){activeSimulation=e.value;gradeDraft=null;render();}
+  if(e.id==='simulation-plan'){const s=gradesCache?.simulations.find(s=>s.id===activeSimulation);if(s){s.planId=e.value;gradeDraft=null;render();}}
+});
+addEventListener('submit',event=>{
+  const form=event.target;
+  if(form.id==='simulation-create-form'){event.preventDefault();const name=formVal(form,'name');if(!name||!gradesCache)return;const s={id:id(),name,planId:state.activePlan,entries:{}};gradesCache.simulations.push(s);activeSimulation=s.id;gradeDraft=null;render();}
+  if(form.id==='grade-entry-form'){event.preventDefault();try{applyGradeDraft();}catch(e){notify(e.message);}}
 });
